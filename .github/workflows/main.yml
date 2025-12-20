@@ -18,28 +18,20 @@ jobs:
         path: util/linux-builder/output/Vial-x86_64.AppImage
 
   build-mac:
-    runs-on: macos-13
-    env:
-      PYTHON_VERSION: 3.6.8
-      MACOSX_DEPLOYMENT_TARGET: 10.9
+    runs-on: macos-15-intel
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Get Python
-      run: curl https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macosx${MACOSX_DEPLOYMENT_TARGET}.pkg -o "python.pkg"
-
-    - name: Verify download
-      run: shasum -a 256 -c <<< '4bcd53faffc98d193ef7cdccd5668de3829c702af4db45258819a84a2cab60d0 *python.pkg'
-
-    - name: Install Python
-      run: |
-        sudo installer -pkg python.pkg -target /
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.6'
 
     - name: Setup venv
       run: |
         python3 -m venv venv
         source venv/bin/activate
+        pip install --upgrade pip
         pip install -r requirements.txt
 
     - name: Build
@@ -58,14 +50,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
+    - uses: actions/setup-python@v5
       with:
-        python-version: '3.6.x'
+        python-version: '3.6'
 
     - name: Setup venv
       run: |
         python -m venv venv
         . .\venv\Scripts\activate.ps1
+        python -m pip install --upgrade pip
         pip install -r requirements.txt
 
     - name: Install NSIS

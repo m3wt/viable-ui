@@ -21,6 +21,7 @@ else
     echo "Creating new virtual environment..."
     /python36/prefix/bin/python3 -m venv "$VENV_DIR"
     . "$VENV_DIR/bin/activate"
+    pip install --upgrade pip
     pip install -r requirements.txt
 fi
 
