@@ -1,3 +1,6 @@
+# DEPRECATED: Use Dockerfile.base instead for incremental builds
+# This file is kept for backwards compatibility
+
 FROM ubuntu:18.04
 
 RUN apt-get update && apt-get -y upgrade

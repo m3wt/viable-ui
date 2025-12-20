@@ -65,3 +65,21 @@ VIAL_PROTOCOL_QMK_SETTINGS = 4
 # When did we get support for 2-byte macros
 VIAL_PROTOCOL_EXT_MACROS = 5
 VIAL_PROTOCOL_KEY_OVERRIDE = 5
+
+# Svalboard protocol
+SVAL_VIA_PREFIX = 0xEE
+SVAL_GET_PROTOCOL_VERSION = 0x01
+SVAL_GET_FIRMWARE_VERSION = 0x02
+SVAL_GET_LAYER_HSV = 0x10
+SVAL_SET_LAYER_HSV = 0x11
+SVAL_GET_LAYER_COUNT = 0x12
+SVAL_GET_SETTINGS = 0x20
+SVAL_SET_SETTINGS = 0x21
+SVAL_GET_DPI_LEVELS = 0x22
+SVAL_GET_MH_TIMERS = 0x23
+
+# Svalboard DPI levels fallback (actual values fetched from firmware)
+SVAL_DPI_LEVELS_FALLBACK = [200, 400, 600, 800, 1200, 1600, 2400, 3200, 4800, 6400, 12000]
+
+# Svalboard mouse layer timeout fallback (actual values fetched from firmware, -1 = infinite)
+SVAL_MH_TIMEOUTS_FALLBACK = [200, 300, 400, 500, 800, -1]

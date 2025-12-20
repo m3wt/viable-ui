@@ -25,6 +25,7 @@ from editor.layout_editor import LayoutEditor
 from editor.macro_recorder import MacroRecorder
 from editor.qmk_settings import QmkSettings
 from editor.rgb_configurator import RGBConfigurator
+from editor.svalboard_editor import SvalboardEditor
 from tabbed_keycodes import TabbedKeycodes
 from editor.tap_dance import TapDance
 from unlocker import Unlocker
@@ -85,12 +86,13 @@ class MainWindow(QMainWindow):
         self.qmk_settings = QmkSettings()
         self.matrix_tester = MatrixTest(self.layout_editor)
         self.rgb_configurator = RGBConfigurator()
+        self.svalboard_editor = SvalboardEditor()
 
         self.editors = [(self.keymap_editor, "Keymap"), (self.layout_editor, "Layout"), (self.macro_recorder, "Macros"),
                         (self.rgb_configurator, "Lighting"), (self.tap_dance, "Tap Dance"), (self.combos, "Combos"),
                         (self.key_override, "Key Overrides"), (self.alt_repeat_key, "Alt Repeat Key"),
-                        (self.qmk_settings, "QMK Settings"), (self.matrix_tester, "Matrix tester"),
-                        (self.firmware_flasher, "Firmware updater")]
+                        (self.qmk_settings, "QMK Settings"), (self.svalboard_editor, "Svalboard"),
+                        (self.matrix_tester, "Matrix tester"), (self.firmware_flasher, "Firmware updater")]
 
         Unlocker.global_layout_editor = self.layout_editor
         Unlocker.global_main_window = self
@@ -338,7 +340,7 @@ class MainWindow(QMainWindow):
 
         for e in [self.layout_editor, self.keymap_editor, self.firmware_flasher, self.macro_recorder,
                   self.tap_dance, self.combos, self.key_override, self.alt_repeat_key,
-                  self.qmk_settings, self.matrix_tester, self.rgb_configurator]:
+                  self.qmk_settings, self.matrix_tester, self.rgb_configurator, self.svalboard_editor]:
             e.rebuild(self.autorefresh.current_device)
 
     def refresh_tabs(self):
