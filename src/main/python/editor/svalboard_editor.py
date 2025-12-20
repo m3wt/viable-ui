@@ -7,7 +7,6 @@ from PyQt5.QtWidgets import (QWidget, QPushButton, QHBoxLayout, QVBoxLayout,
                               QColorDialog, QGroupBox, QScrollArea, QSizePolicy)
 
 from editor.basic_editor import BasicEditor
-from protocol.constants import SVAL_DPI_LEVELS_FALLBACK, SVAL_MH_TIMEOUTS_FALLBACK
 from widgets.clickable_label import ClickableLabel
 from util import tr
 from vial_device import VialKeyboard
@@ -37,11 +36,17 @@ class SvalboardEditor(BasicEditor):
         # Layer Colors section
         self._create_layer_colors_section()
 
-        # Pointing Device section
-        self._create_pointing_section()
+        # Left/Right Pointer sections side by side
+        self._create_pointer_sections()
 
-        # Mouse Settings section
+        # Mouse Layer section
         self._create_mouse_section()
+
+        # Scroll section
+        self._create_scroll_section()
+
+        # Experimental/Dangerous section
+        self._create_experimental_section()
 
         self.container.addStretch()
         self.addWidget(scroll)
@@ -83,62 +88,83 @@ class SvalboardEditor(BasicEditor):
         self.layer_colors_group = group
         self.container.addWidget(group)
 
-    def _create_pointing_section(self):
-        group = QGroupBox(tr("SvalboardEditor", "Pointing Device"))
-        layout = QGridLayout()
+    def _create_pointer_sections(self):
+        # Container for left and right pointer groups side by side
+        pointer_container = QHBoxLayout()
 
-        # Left DPI (populated dynamically from firmware)
-        layout.addWidget(QLabel(tr("SvalboardEditor", "Left DPI")), 0, 0)
+        # Left Pointer group
+        left_group = QGroupBox(tr("SvalboardEditor", "Left Pointer"))
+        left_layout = QGridLayout()
+
+        left_layout.addWidget(QLabel(tr("SvalboardEditor", "DPI")), 0, 0)
         self.left_dpi = QComboBox()
         self.left_dpi.currentIndexChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.left_dpi, 0, 1)
+        left_layout.addWidget(self.left_dpi, 0, 1)
 
-        # Right DPI (populated dynamically from firmware)
-        layout.addWidget(QLabel(tr("SvalboardEditor", "Right DPI")), 1, 0)
+        self.left_scroll = QCheckBox(tr("SvalboardEditor", "Scroll mode"))
+        self.left_scroll.stateChanged.connect(self.on_setting_changed)
+        left_layout.addWidget(self.left_scroll, 1, 0, 1, 2)
+
+        left_group.setLayout(left_layout)
+        pointer_container.addWidget(left_group)
+
+        # Right Pointer group
+        right_group = QGroupBox(tr("SvalboardEditor", "Right Pointer"))
+        right_layout = QGridLayout()
+
+        right_layout.addWidget(QLabel(tr("SvalboardEditor", "DPI")), 0, 0)
         self.right_dpi = QComboBox()
         self.right_dpi.currentIndexChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.right_dpi, 1, 1)
+        right_layout.addWidget(self.right_dpi, 0, 1)
 
-        # Left scroll mode
-        self.left_scroll = QCheckBox(tr("SvalboardEditor", "Left scroll mode"))
-        self.left_scroll.stateChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.left_scroll, 2, 0, 1, 2)
-
-        # Right scroll mode
-        self.right_scroll = QCheckBox(tr("SvalboardEditor", "Right scroll mode"))
+        self.right_scroll = QCheckBox(tr("SvalboardEditor", "Scroll mode"))
         self.right_scroll.stateChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.right_scroll, 3, 0, 1, 2)
+        right_layout.addWidget(self.right_scroll, 1, 0, 1, 2)
 
-        # Axis scroll lock
-        self.axis_scroll_lock = QCheckBox(tr("SvalboardEditor", "Axis scroll lock"))
-        self.axis_scroll_lock.stateChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.axis_scroll_lock, 4, 0, 1, 2)
+        right_group.setLayout(right_layout)
+        pointer_container.addWidget(right_group)
 
-        group.setLayout(layout)
-        self.container.addWidget(group)
+        self.container.addLayout(pointer_container)
 
     def _create_mouse_section(self):
-        group = QGroupBox(tr("SvalboardEditor", "Mouse Settings"))
+        group = QGroupBox(tr("SvalboardEditor", "Mouse Layer"))
         layout = QGridLayout()
 
         # Auto-mouse
-        self.auto_mouse = QCheckBox(tr("SvalboardEditor", "Auto-mouse layer"))
+        self.auto_mouse = QCheckBox(tr("SvalboardEditor", "Enable"))
         self.auto_mouse.stateChanged.connect(self.on_setting_changed)
         layout.addWidget(self.auto_mouse, 0, 0, 1, 2)
 
         # Mouse layer timeout (populated dynamically from firmware)
-        layout.addWidget(QLabel(tr("SvalboardEditor", "Mouse layer timeout")), 1, 0)
+        layout.addWidget(QLabel(tr("SvalboardEditor", "Timeout")), 1, 0)
         self.mh_timeout = QComboBox()
         self.mh_timeout.currentIndexChanged.connect(self.on_setting_changed)
         layout.addWidget(self.mh_timeout, 1, 1)
 
-        # Turbo scan
-        layout.addWidget(QLabel(tr("SvalboardEditor", "Turbo scan level")), 2, 0)
+        group.setLayout(layout)
+        self.container.addWidget(group)
+
+    def _create_scroll_section(self):
+        group = QGroupBox(tr("SvalboardEditor", "Scroll"))
+        layout = QGridLayout()
+
+        # Axis scroll lock
+        self.axis_scroll_lock = QCheckBox(tr("SvalboardEditor", "Axis lock"))
+        self.axis_scroll_lock.stateChanged.connect(self.on_setting_changed)
+        layout.addWidget(self.axis_scroll_lock, 0, 0, 1, 2)
+
+        group.setLayout(layout)
+        self.container.addWidget(group)
+
+    def _create_experimental_section(self):
+        group = QGroupBox(tr("SvalboardEditor", "Experimental/Dangerous"))
+        layout = QGridLayout()
+
+        # Turbo scan (populated dynamically from firmware)
+        layout.addWidget(QLabel(tr("SvalboardEditor", "Turbo scan level")), 0, 0)
         self.turbo_scan = QComboBox()
-        for level in range(8):
-            self.turbo_scan.addItem(str(level))
         self.turbo_scan.currentIndexChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.turbo_scan, 2, 1)
+        layout.addWidget(self.turbo_scan, 0, 1)
 
         group.setLayout(layout)
         self.container.addWidget(group)
@@ -171,21 +197,18 @@ class SvalboardEditor(BasicEditor):
             self._update_layer_visibility()
             self._update_dpi_dropdowns()
             self._update_mh_timeout_dropdown()
+            self._update_turbo_scan_dropdown()
             self.update_from_keyboard()
 
     def _update_dpi_dropdowns(self):
         """Populate DPI dropdowns with values from firmware"""
-        dpi_levels = getattr(self.keyboard, 'sval_dpi_levels', None)
-        if not dpi_levels:
-            dpi_levels = SVAL_DPI_LEVELS_FALLBACK
-
         self.left_dpi.blockSignals(True)
         self.right_dpi.blockSignals(True)
 
         self.left_dpi.clear()
         self.right_dpi.clear()
 
-        for dpi in dpi_levels:
+        for dpi in self.keyboard.sval_dpi_levels:
             self.left_dpi.addItem(str(dpi))
             self.right_dpi.addItem(str(dpi))
 
@@ -194,14 +217,10 @@ class SvalboardEditor(BasicEditor):
 
     def _update_mh_timeout_dropdown(self):
         """Populate mouse layer timeout dropdown with values from firmware"""
-        mh_timers = getattr(self.keyboard, 'sval_mh_timers', None)
-        if not mh_timers:
-            mh_timers = SVAL_MH_TIMEOUTS_FALLBACK
-
         self.mh_timeout.blockSignals(True)
         self.mh_timeout.clear()
 
-        for timeout in mh_timers:
+        for timeout in self.keyboard.sval_mh_timers:
             if timeout < 0:
                 self.mh_timeout.addItem("Infinite")
             else:
@@ -209,9 +228,19 @@ class SvalboardEditor(BasicEditor):
 
         self.mh_timeout.blockSignals(False)
 
+    def _update_turbo_scan_dropdown(self):
+        """Populate turbo scan dropdown with levels from firmware"""
+        self.turbo_scan.blockSignals(True)
+        self.turbo_scan.clear()
+
+        for level in range(self.keyboard.sval_turbo_scan_limit):
+            self.turbo_scan.addItem(str(level))
+
+        self.turbo_scan.blockSignals(False)
+
     def _update_layer_visibility(self):
         """Show/hide layer color widgets based on actual layer count"""
-        layer_count = getattr(self.keyboard, 'sval_layer_count', 16)
+        layer_count = self.keyboard.sval_layer_count
         for i, (frame, color_btn, label) in enumerate(self.layer_color_widgets):
             if i < layer_count:
                 frame.show()

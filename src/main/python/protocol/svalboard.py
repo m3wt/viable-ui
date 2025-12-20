@@ -6,8 +6,7 @@ from protocol.constants import (SVAL_VIA_PREFIX, SVAL_GET_PROTOCOL_VERSION,
                                  SVAL_GET_LAYER_HSV, SVAL_SET_LAYER_HSV,
                                  SVAL_GET_LAYER_COUNT, SVAL_GET_SETTINGS,
                                  SVAL_SET_SETTINGS, SVAL_GET_DPI_LEVELS,
-                                 SVAL_GET_MH_TIMERS, SVAL_DPI_LEVELS_FALLBACK,
-                                 SVAL_MH_TIMEOUTS_FALLBACK)
+                                 SVAL_GET_MH_TIMERS)
 
 
 class ProtocolSvalboard(BaseProtocol):
@@ -23,6 +22,7 @@ class ProtocolSvalboard(BaseProtocol):
     sval_settings = None      # Dict with all settings
     sval_dpi_levels = None    # List of DPI values from firmware
     sval_mh_timers = None     # List of mouse layer timeout values from firmware
+    sval_turbo_scan_limit = None  # Number of turbo scan levels from firmware
 
     def reload_svalboard(self):
         """Check if svalboard and load settings"""
@@ -33,6 +33,7 @@ class ProtocolSvalboard(BaseProtocol):
         self.sval_settings = None
         self.sval_dpi_levels = None
         self.sval_mh_timers = None
+        self.sval_turbo_scan_limit = None
 
         try:
             data = self.usb_send(
@@ -61,52 +62,43 @@ class ProtocolSvalboard(BaseProtocol):
 
     def _load_layer_count(self):
         """Get the number of layers from keyboard"""
-        try:
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_LAYER_COUNT),
-                retries=20
-            )
-            self.sval_layer_count = data[0]
-        except Exception:
-            self.sval_layer_count = 16  # Default fallback
+        data = self.usb_send(
+            self.dev,
+            struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_LAYER_COUNT),
+            retries=20
+        )
+        self.sval_layer_count = data[0]
 
     def _load_dpi_levels(self):
         """Get the DPI levels table from keyboard"""
-        try:
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_DPI_LEVELS),
-                retries=20
-            )
-            count = data[0]
-            self.sval_dpi_levels = []
-            for i in range(count):
-                # DPI values are 2 bytes each, little-endian
-                dpi = data[1 + i * 2] | (data[2 + i * 2] << 8)
-                self.sval_dpi_levels.append(dpi)
-        except Exception:
-            self.sval_dpi_levels = list(SVAL_DPI_LEVELS_FALLBACK)
+        data = self.usb_send(
+            self.dev,
+            struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_DPI_LEVELS),
+            retries=20
+        )
+        count = data[0]
+        self.sval_dpi_levels = []
+        for i in range(count):
+            # DPI values are 2 bytes each, little-endian
+            dpi = data[1 + i * 2] | (data[2 + i * 2] << 8)
+            self.sval_dpi_levels.append(dpi)
 
     def _load_mh_timers(self):
         """Get the mouse layer timeout options from keyboard"""
-        try:
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_MH_TIMERS),
-                retries=20
-            )
-            count = data[0]
-            self.sval_mh_timers = []
-            for i in range(count):
-                # Timer values are signed 2 bytes each, little-endian
-                raw = data[1 + i * 2] | (data[2 + i * 2] << 8)
-                # Convert to signed int16
-                if raw >= 0x8000:
-                    raw -= 0x10000
-                self.sval_mh_timers.append(raw)
-        except Exception:
-            self.sval_mh_timers = list(SVAL_MH_TIMEOUTS_FALLBACK)
+        data = self.usb_send(
+            self.dev,
+            struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_MH_TIMERS),
+            retries=20
+        )
+        count = data[0]
+        self.sval_mh_timers = []
+        for i in range(count):
+            # Timer values are signed 2 bytes each, little-endian
+            raw = data[1 + i * 2] | (data[2 + i * 2] << 8)
+            # Convert to signed int16
+            if raw >= 0x8000:
+                raw -= 0x10000
+            self.sval_mh_timers.append(raw)
 
     def _load_layer_colors(self):
         """Load all layer colors"""
@@ -136,6 +128,7 @@ class ProtocolSvalboard(BaseProtocol):
             'mh_timer_index': data[6],
             'turbo_scan': data[7],
         }
+        self.sval_turbo_scan_limit = data[8]
 
     def sval_set_layer_color(self, layer, h, s, v):
         """Set color for a layer"""
