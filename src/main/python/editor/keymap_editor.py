@@ -53,10 +53,8 @@ class KeymapEditor(BasicEditor):
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.scroll_area.setAlignment(Qt.AlignCenter)
-        # Transparent viewport required for keyboard key bevels to render correctly
-        self.scroll_area.viewport().setStyleSheet("background: transparent;")
-        # Add subtle border to show scroll area edges
-        self.scroll_area.setStyleSheet("QScrollArea { border: 1px solid palette(mid); }")
+        # Use window background color for keyboard area
+        self.scroll_area.setStyleSheet("QScrollArea { border: 1px solid palette(mid); background: palette(window); }")
 
         layout = QVBoxLayout()
         layout.addLayout(layout_labels_container)
@@ -142,14 +140,50 @@ class KeymapEditor(BasicEditor):
             TabbedKeycodes.tray.recreate_keycode_buttons()
             self.refresh_layer_display()
 
+            # Update User tab label based on whether Svalboard is connected
+            is_svalboard = getattr(self.keyboard, 'is_svalboard', False)
+            label = "Svalboard" if is_svalboard else "User"
+            self.tabbed_keycodes.set_user_tab_label(label)
+
             # Delay resize to after event loop processes layout
             QTimer.singleShot(0, self._update_container_size)
         self.container.setEnabled(self.valid())
 
     def _update_container_size(self):
-        """Update container size after layout is processed"""
+        """Update container size after layout is processed, auto-fitting to available space"""
+        self._auto_fit_keyboard()
         self.container.resize(self.container.sizeHint())
         self.container.update()  # Force repaint after resize
+
+    def _auto_fit_keyboard(self):
+        """Auto-scale keyboard to fit in scroll area without scrolling"""
+        # Get available space in scroll area
+        available_width = self.scroll_area.viewport().width()
+        available_height = self.scroll_area.viewport().height()
+
+        if available_width <= 0 or available_height <= 0:
+            return
+
+        # Get keyboard size at scale=1 to calculate required scale
+        current_scale = self.container.get_scale()
+        base_width = self.container.width / current_scale if current_scale > 0 else self.container.width
+        base_height = self.container.height / current_scale if current_scale > 0 else self.container.height
+
+        if base_width <= 0 or base_height <= 0:
+            return
+
+        # Calculate scale to fit both dimensions
+        scale_for_width = available_width / base_width
+        scale_for_height = available_height / base_height
+        new_scale = min(scale_for_width, scale_for_height)
+
+        # Clamp to reasonable range
+        new_scale = max(0.5, min(3.0, new_scale))
+
+        # Only update if scale changed significantly
+        if abs(new_scale - current_scale) > 0.01:
+            self.container.set_scale(new_scale)
+            self.refresh_layer_display()
 
     def valid(self):
         return isinstance(self.device, VialKeyboard)

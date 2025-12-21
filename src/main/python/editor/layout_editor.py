@@ -165,6 +165,17 @@ class LayoutEditor(BasicEditor):
     def get_choice(self, index):
         return int(self.choices[index].pack(), 2)
 
+    def set_option_by_name(self, option_name):
+        """Find and select a layout option by name (e.g., '2S')"""
+        for choice in self.choices:
+            if isinstance(choice, SelectChoice):
+                for idx, opt in enumerate(choice.options):
+                    if opt == option_name:
+                        choice.change(idx)
+                        self.on_changed()
+                        return True
+        return False
+
     def on_changed(self):
         self.changed.emit()
         self.update_preview()

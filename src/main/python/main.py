@@ -76,10 +76,15 @@ if __name__ == '__main__':
 
         linux_keystroke_recorder()
     else:
+        # Parse command line arguments
+        initial_tab = None
+        if "--matrix-test" in sys.argv:
+            initial_tab = "Matrix tester"
+
         appctxt = VialApplicationContext()       # 1. Instantiate ApplicationContext
         init_logger()
         qt_exception_hook = UncaughtHook()
-        window = MainWindow(appctxt)
+        window = MainWindow(appctxt, initial_tab=initial_tab)
         window.show()
         exit_code = appctxt.app.exec_()      # 2. Invoke appctxt.app.exec_()
         sys.exit(exit_code)

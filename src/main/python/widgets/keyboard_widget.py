@@ -364,50 +364,46 @@ class KeyboardWidget(QWidget):
         qp.begin(self)
         qp.setRenderHint(QPainter.Antialiasing)
 
-        # for regular keycaps
-        regular_pen = qp.pen()
-        regular_pen.setColor(QApplication.palette().color(QPalette.ButtonText))
-        qp.setPen(regular_pen)
+        palette = QApplication.palette()
 
+        # Text pen
+        text_pen = qp.pen()
+        text_pen.setColor(palette.color(QPalette.ButtonText))
+
+        # Border pen for normal keys
+        border_pen = qp.pen()
+        border_pen.setColor(palette.color(QPalette.Mid))
+        border_pen.setWidthF(1.0)
+
+        # Border pen for selected keys
+        active_pen = qp.pen()
+        active_pen.setColor(palette.color(QPalette.Highlight))
+        active_pen.setWidthF(2.0)
+
+        # Background brush for normal keys
         background_brush = QBrush()
-        background_brush.setColor(QApplication.palette().color(QPalette.Button))
+        background_brush.setColor(palette.color(QPalette.Button))
         background_brush.setStyle(Qt.SolidPattern)
 
-        foreground_brush = QBrush()
-        foreground_brush.setColor(QApplication.palette().color(QPalette.Button).lighter(120))
-        foreground_brush.setStyle(Qt.SolidPattern)
+        # Background brush for pressed keys (matrix tester)
+        pressed_brush = QBrush()
+        pressed_brush.setColor(palette.color(QPalette.Highlight))
+        pressed_brush.setStyle(Qt.SolidPattern)
 
+        # Background brush for "on" keys
+        on_brush = QBrush()
+        on_brush.setColor(palette.color(QPalette.Highlight).darker(150))
+        on_brush.setStyle(Qt.SolidPattern)
+
+        # Mask area brush (for mod-tap inner key)
         mask_brush = QBrush()
-        mask_brush.setColor(QApplication.palette().color(QPalette.Button).lighter(Theme.mask_light_factor()))
+        mask_brush.setColor(palette.color(QPalette.Button).lighter(Theme.mask_light_factor()))
         mask_brush.setStyle(Qt.SolidPattern)
 
-        # for currently selected keycap
-        active_pen = qp.pen()
-        active_pen.setColor(QApplication.palette().color(QPalette.Highlight))
-        active_pen.setWidthF(1.5)
-
-        # for the encoder arrow
-        extra_pen = regular_pen
+        # Encoder arrow
         extra_brush = QBrush()
-        extra_brush.setColor(QApplication.palette().color(QPalette.ButtonText))
+        extra_brush.setColor(palette.color(QPalette.ButtonText))
         extra_brush.setStyle(Qt.SolidPattern)
-
-        # for pressed keycaps
-        background_pressed_brush = QBrush()
-        background_pressed_brush.setColor(QApplication.palette().color(QPalette.Highlight))
-        background_pressed_brush.setStyle(Qt.SolidPattern)
-
-        foreground_pressed_brush = QBrush()
-        foreground_pressed_brush.setColor(QApplication.palette().color(QPalette.Highlight).lighter(120))
-        foreground_pressed_brush.setStyle(Qt.SolidPattern)
-
-        background_on_brush = QBrush()
-        background_on_brush.setColor(QApplication.palette().color(QPalette.Highlight).darker(150))
-        background_on_brush.setStyle(Qt.SolidPattern)
-
-        foreground_on_brush = QBrush()
-        foreground_on_brush.setColor(QApplication.palette().color(QPalette.Highlight).darker(120))
-        foreground_on_brush.setStyle(Qt.SolidPattern)
 
         mask_font = qp.font()
         mask_font.setPointSize(round(mask_font.pointSize() * 0.8))
@@ -423,48 +419,41 @@ class KeyboardWidget(QWidget):
 
             active = key.active or (self.active_key == key and not self.active_mask)
 
-            # draw keycap background/drop-shadow
-            qp.setPen(active_pen if active else Qt.NoPen)
-            brush = background_brush
+            # Choose brush based on key state
             if key.pressed:
-                brush = background_pressed_brush
+                brush = pressed_brush
             elif key.on:
-                brush = background_on_brush
+                brush = on_brush
+            else:
+                brush = background_brush
+
+            # Draw keycap: flat style with border
+            qp.setPen(active_pen if active else border_pen)
             qp.setBrush(brush)
             qp.drawPath(key.background_draw_path)
 
-            # draw keycap foreground
-            qp.setPen(Qt.NoPen)
-            brush = foreground_brush
-            if key.pressed:
-                brush = foreground_pressed_brush
-            elif key.on:
-                brush = foreground_on_brush
-            qp.setBrush(brush)
-            qp.drawPath(key.foreground_draw_path)
-
-            # draw key text
+            # Draw key text
             if key.masked:
-                # draw the outer legend
+                # Draw the outer legend (smaller font)
                 qp.setFont(mask_font)
-                qp.setPen(key.color if key.color else regular_pen)
+                qp.setPen(key.color if key.color else text_pen)
                 qp.drawText(key.nonmask_rect, Qt.AlignCenter, key.text)
 
-                # draw the inner highlight rect
-                qp.setPen(active_pen if self.active_key == key and self.active_mask else Qt.NoPen)
+                # Draw the inner key area
+                qp.setPen(active_pen if self.active_key == key and self.active_mask else border_pen)
                 qp.setBrush(mask_brush)
                 qp.drawRoundedRect(key.mask_rect, key.corner, key.corner)
 
-                # draw the inner legend
-                qp.setPen(key.mask_color if key.mask_color else regular_pen)
+                # Draw the inner legend
+                qp.setPen(key.mask_color if key.mask_color else text_pen)
                 qp.drawText(key.mask_rect, Qt.AlignCenter, key.mask_text)
             else:
-                # draw the legend
-                qp.setPen(key.color if key.color else regular_pen)
-                qp.drawText(key.text_rect, Qt.AlignCenter, key.text)
+                # Draw the legend
+                qp.setPen(key.color if key.color else text_pen)
+                qp.drawText(key.rect, Qt.AlignCenter, key.text)
 
-            # draw the extra shape (encoder arrow)
-            qp.setPen(extra_pen)
+            # Draw the extra shape (encoder arrow)
+            qp.setPen(text_pen)
             qp.setBrush(extra_brush)
             qp.drawPath(key.extra_draw_path)
 

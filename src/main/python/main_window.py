@@ -39,9 +39,10 @@ import themes
 
 class MainWindow(QMainWindow):
 
-    def __init__(self, appctx):
+    def __init__(self, appctx, initial_tab=None):
         super().__init__()
         self.appctx = appctx
+        self.initial_tab = initial_tab
 
         self.ui_lock_count = 0
 
@@ -459,6 +460,9 @@ class MainWindow(QMainWindow):
         self.svalboard_load_act.setVisible(is_svalboard)
         self.svalboard_save_act.setVisible(is_svalboard)
 
+        # Update User tab label to "Svalboard" when Svalboard is connected
+        TabbedKeycodes.update_user_tab_label(is_svalboard)
+
     def refresh_tabs(self):
         self.tabs.clear()
         for container, lbl in self.editors:
@@ -467,6 +471,17 @@ class MainWindow(QMainWindow):
 
             c = EditorContainer(container)
             self.tabs.addTab(c, tr("MainWindow", lbl))
+
+        # Switch to initial tab if specified via command line
+        if self.initial_tab:
+            for i in range(self.tabs.count()):
+                if self.tabs.tabText(i) == self.initial_tab:
+                    self.tabs.setCurrentIndex(i)
+                    break
+
+            # For Svalboard with --matrix-test, automatically select 2S layout
+            if self.initial_tab == "Matrix tester" and self.svalboard_editor.valid():
+                self.layout_editor.set_option_by_name("2S")
 
     def load_via_stack_json(self):
         from urllib.request import urlopen
