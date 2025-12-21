@@ -7,6 +7,7 @@ from PyQt5.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, QT_VERSIO
 from PyQt5.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, QAction, qApp, \
     QFileDialog, QDialog, QTabWidget, QActionGroup, QMessageBox, QLabel
 
+import json
 import os
 import sys
 
@@ -174,9 +175,23 @@ class MainWindow(QMainWindow):
         exit_act.setShortcut("Ctrl+Q")
         exit_act.triggered.connect(self.close)
 
+        # Svalboard profile save/load (only visible when Svalboard connected)
+        self.svalboard_load_act = QAction(tr("MenuFile", "Load Svalboard profile..."), self)
+        self.svalboard_load_act.setShortcut("Ctrl+Shift+O")
+        self.svalboard_load_act.triggered.connect(self.on_svalboard_load)
+        self.svalboard_load_act.setVisible(False)
+
+        self.svalboard_save_act = QAction(tr("MenuFile", "Save Svalboard profile..."), self)
+        self.svalboard_save_act.setShortcut("Ctrl+Shift+S")
+        self.svalboard_save_act.triggered.connect(self.on_svalboard_save)
+        self.svalboard_save_act.setVisible(False)
+
         file_menu = self.menuBar().addMenu(tr("Menu", "File"))
         file_menu.addAction(layout_load_act)
         file_menu.addAction(layout_save_act)
+        file_menu.addSeparator()
+        file_menu.addAction(self.svalboard_load_act)
+        file_menu.addAction(self.svalboard_save_act)
 
         if sys.platform != "emscripten":
             file_menu.addSeparator()
@@ -248,7 +263,19 @@ class MainWindow(QMainWindow):
         """
         Receives a message from the JS bridge when a layout has
         been loaded via the JS File System API.
+        Handles both .vil and .svil formats.
         """
+        # Try to detect if this is a .svil profile or a .vil layout
+        try:
+            data = json.loads(layout.decode("utf-8"))
+            if data.get("format") == "svil":
+                # This is a Svalboard profile
+                self._restore_svalboard_profile(layout)
+                return
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+        # Standard .vil layout
         self.keymap_editor.restore_layout(layout)
         self.rebuild()
 
@@ -284,6 +311,88 @@ class MainWindow(QMainWindow):
             if dialog.exec_() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "wb") as outf:
                     outf.write(self.keymap_editor.save_layout())
+
+    def on_svalboard_save(self):
+        """Save Svalboard profile (.svil) with layout and Svalboard settings"""
+        if not self.svalboard_editor.valid():
+            return
+
+        # Build the combined profile data
+        svalboard_state = self.svalboard_editor.save_state()
+        vil_data = json.loads(self.keymap_editor.save_layout().decode("utf-8"))
+
+        profile = {
+            "version": 1,
+            "format": "svil",
+            "svalboard": svalboard_state,
+            "vil": vil_data
+        }
+
+        profile_bytes = json.dumps(profile, indent=2).encode("utf-8")
+
+        if sys.platform == "emscripten":
+            import vialglue
+            vialglue.save_svalboard_profile(profile_bytes)
+        else:
+            dialog = QFileDialog()
+            dialog.setDefaultSuffix("svil")
+            dialog.setAcceptMode(QFileDialog.AcceptSave)
+            dialog.setNameFilters(["Svalboard profile (*.svil)"])
+            if dialog.exec_() == QDialog.Accepted:
+                with open(dialog.selectedFiles()[0], "wb") as outf:
+                    outf.write(profile_bytes)
+
+    def on_svalboard_load(self):
+        """Load Svalboard profile (.svil) with layout and Svalboard settings"""
+        if sys.platform == "emscripten":
+            import vialglue
+            vialglue.load_svalboard_profile()
+            # Note: The loaded data will come back through on_layout_loaded
+        else:
+            dialog = QFileDialog()
+            dialog.setDefaultSuffix("svil")
+            dialog.setAcceptMode(QFileDialog.AcceptOpen)
+            dialog.setNameFilters(["Svalboard profile (*.svil)"])
+            if dialog.exec_() == QDialog.Accepted:
+                with open(dialog.selectedFiles()[0], "rb") as inf:
+                    data = inf.read()
+                self._restore_svalboard_profile(data)
+
+    def _restore_svalboard_profile(self, data):
+        """Restore a Svalboard profile from bytes data"""
+        try:
+            profile = json.loads(data.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            QMessageBox.warning(self, "", f"Failed to parse profile: {e}")
+            return
+
+        # Check format
+        if profile.get("format") != "svil":
+            QMessageBox.warning(self, "", "Invalid Svalboard profile format.")
+            return
+
+        # Check keyboard UID matches
+        vil_data = profile.get("vil", {})
+        if vil_data.get("uid") != self.keymap_editor.keyboard.keyboard_id:
+            ret = QMessageBox.question(
+                self, "",
+                tr("MainWindow", "Saved profile belongs to a different keyboard, "
+                                 "are you sure you want to continue?"),
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if ret != QMessageBox.Yes:
+                return
+
+        # Restore the .vil layout data
+        vil_bytes = json.dumps(vil_data).encode("utf-8")
+        self.keymap_editor.restore_layout(vil_bytes)
+
+        # Restore Svalboard settings
+        svalboard_data = profile.get("svalboard", {})
+        if svalboard_data:
+            self.svalboard_editor.restore_state(svalboard_data)
+
+        self.rebuild()
 
     def on_click_refresh(self):
         self.autorefresh.update(quiet=False, hard=True)
@@ -343,6 +452,12 @@ class MainWindow(QMainWindow):
                   self.tap_dance, self.combos, self.key_override, self.alt_repeat_key,
                   self.qmk_settings, self.matrix_tester, self.rgb_configurator, self.svalboard_editor]:
             e.rebuild(self.autorefresh.current_device)
+
+        # Show Svalboard profile menu items only when a Svalboard is connected
+        # (must be after editors are rebuilt so svalboard_editor.valid() works)
+        is_svalboard = self.svalboard_editor.valid()
+        self.svalboard_load_act.setVisible(is_svalboard)
+        self.svalboard_save_act.setVisible(is_svalboard)
 
     def refresh_tabs(self):
         self.tabs.clear()

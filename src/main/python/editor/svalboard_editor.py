@@ -387,3 +387,60 @@ class SvalboardEditor(BasicEditor):
         self.keyboard.sval_reload_layer_colors()
         self.keyboard.sval_reload_settings()
         self.update_from_keyboard()
+
+    def save_state(self):
+        """Return current state as a dict for saving to file"""
+        if not self.valid():
+            return None
+
+        # Save layer colors as list of dicts for readability
+        layer_colors = []
+        if self.pending_layer_colors:
+            for h, s, v in self.pending_layer_colors:
+                layer_colors.append({"h": h, "s": s, "v": v})
+
+        return {
+            "layer_colors": layer_colors,
+            "settings": self.pending_settings.copy() if self.pending_settings else {}
+        }
+
+    def restore_state(self, data):
+        """Restore state from saved data dict"""
+        if not self.valid() or not data:
+            return
+
+        self._block_signals()
+
+        # Restore layer colors
+        layer_colors = data.get("layer_colors", [])
+        if layer_colors and self.pending_layer_colors:
+            for i, color_data in enumerate(layer_colors):
+                if i < len(self.pending_layer_colors):
+                    h = color_data.get("h", 0)
+                    s = color_data.get("s", 0)
+                    v = color_data.get("v", 0)
+                    self.pending_layer_colors[i] = (h, s, v)
+
+                    # Update widget display
+                    qt_hue = int(h * 359 / 255) if h > 0 else 0
+                    color = QColor.fromHsv(qt_hue, s, v)
+                    self.layer_color_widgets[i][1].setStyleSheet(
+                        f"background-color: {color.name()}; border: 1px solid gray;"
+                    )
+
+        # Restore settings
+        settings = data.get("settings", {})
+        if settings and self.pending_settings:
+            self.pending_settings.update(settings)
+
+            self.left_dpi.setCurrentIndex(settings.get('left_dpi_index', 0))
+            self.right_dpi.setCurrentIndex(settings.get('right_dpi_index', 0))
+            self.left_scroll.setChecked(settings.get('left_scroll', False))
+            self.right_scroll.setChecked(settings.get('right_scroll', False))
+            self.axis_scroll_lock.setChecked(settings.get('axis_scroll_lock', False))
+            self.auto_mouse.setChecked(settings.get('auto_mouse', False))
+            self.mh_timeout.setCurrentIndex(settings.get('mh_timer_index', 0))
+            self.turbo_scan.setCurrentIndex(settings.get('turbo_scan', 0))
+
+        self._unblock_signals()
+        self._update_buttons()

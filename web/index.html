@@ -147,6 +147,10 @@
                 loadLayout();
             } else if (e.data.cmd == "save_layout") {
                 saveLayout(e.data.layout);
+            } else if (e.data.cmd == "save_svalboard_profile") {
+                saveSvalboardProfile(e.data.layout);
+            } else if (e.data.cmd == "load_svalboard_profile") {
+                loadSvalboardProfile();
             } else if (e.data.cmd == "fatal_error") {
                 alert(e.data.msg);
             } else if (e.data.cmd == "storage_set") {
@@ -159,6 +163,10 @@
                 {
                     description: "Vial layout",
                     accept: { "application/json": [".vil"] },
+                },
+                {
+                    description: "Svalboard profile",
+                    accept: { "application/json": [".svil"] },
                 },
             ],
             excludeAcceptAllOption: false,
@@ -201,6 +209,59 @@
                 const download = document.createElement('a');
                 download.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(layout));
                 download.setAttribute('download', 'layout.vil');
+
+                if (document.createEvent) {
+                    var event = document.createEvent('MouseEvents');
+                    event.initEvent('click', true, true);
+                    download.dispatchEvent(event);
+                } else {
+                    download.click();
+                }
+            }
+        }
+
+        const SVIL_FILE_OPTIONS = {
+            types: [
+                {
+                    description: "Svalboard profile",
+                    accept: { "application/json": [".svil"] },
+                },
+            ],
+            excludeAcceptAllOption: false,
+            multiple: false,
+        };
+
+        async function loadSvalboardProfile() {
+            if (!window.showOpenFilePicker) {
+                alert("File loading API unavailable. Please use a newer browser.");
+                return;
+            }
+
+            const [handle] = await window.showOpenFilePicker(SVIL_FILE_OPTIONS);
+
+            if (!handle) {
+                return;
+            }
+
+            const file = await handle.getFile();
+            const layout = await file.text();
+
+            PThread.runningWorkers[0].postMessage({
+                cmd: "py",
+                payload: `import webmain;webmain.window.on_layout_loaded(b${JSON.stringify(layout)})`,
+            });
+        }
+
+        async function saveSvalboardProfile(layout) {
+            if (window.showSaveFilePicker) {
+                const handle = await window.showSaveFilePicker(SVIL_FILE_OPTIONS);
+                const stream = await handle.createWritable();
+                await stream.write(layout);
+                await stream.close();
+            } else {
+                const download = document.createElement('a');
+                download.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(layout));
+                download.setAttribute('download', 'profile.svil');
 
                 if (document.createEvent) {
                     var event = document.createEvent('MouseEvents');
