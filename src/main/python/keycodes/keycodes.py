@@ -21,10 +21,16 @@ class Keycode:
         self.qmk_id_to_keycode[qmk_id] = self
         self.requires_feature = requires_feature
         self.label = label
-        # we cannot embed full CJK fonts due to large size, workaround like this for now
+        # Qt WASM can't render CJK - fall back to readable names
         if sys.platform == "emscripten" and not label.isascii() and qmk_id != "KC_TRNS":
-            self.label = qmk_id.replace("KC_", "")
-
+            web_labels = {
+                "KC_KANA": "Kana",
+                "KC_HENK": "Henkan",
+                "KC_MHEN": "Muhen",
+                "KC_LANG1": "Lang1\nKana",
+                "KC_LANG2": "Lang2\nEisu",
+            }
+            self.label = web_labels.get(qmk_id, qmk_id.replace("KC_", ""))
         self.tooltip = tooltip
         # whether this keycode requires another sub-keycode
         self.masked = masked

@@ -17,6 +17,7 @@ UNIQVER=$(echo ${VIAL_VER} ${WEB_VER} ${VIA_STACK_VER} | sha256sum | awk '{print
 
 cp ../icon.png .
 cp -r /vial-web/deps/cpython/builddir/emscripten-browser/usr .
+
 cp /vial-web/via-keymap-precompiled/via_keyboard_stack.json usr/local/via_keyboards.json
 cp ../../src/main/resources/base/qmk_settings.json usr/local
 cp ../../src/build/settings/base.json usr/local/build_settings.json

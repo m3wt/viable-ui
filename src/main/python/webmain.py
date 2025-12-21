@@ -65,6 +65,10 @@ def web_get_resource(name):
 
 
 def main(app):
+    # CJK fonts not loaded - Qt WASM font fallback doesn't work for CJK Unified Ideographs.
+    # Kana/hangul would render but kanji wouldn't, causing inconsistent display.
+    # See web/fonts/create-subset.sh for font generation if Qt WASM improves.
+
     font = app.font()
     font.setPointSize(10)
     app.setFont(font)
