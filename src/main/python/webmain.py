@@ -70,6 +70,6 @@ def main(app):
     # Not sure of the best way to do this.
     global window
     window = MainWindow(app)
-    window.show()
+    window.showMaximized()
 
     app.processEvents()
