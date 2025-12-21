@@ -4,7 +4,8 @@ import os
 import traceback
 
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSignal, Qt
+from PyQt5.QtGui import QPalette, QColor
 
 import sys
 import json
@@ -16,6 +17,12 @@ from main_window import MainWindow
 from util import init_logger
 
 window = None
+_web_theme = "Dark"
+
+def set_theme(theme):
+    """Called from JavaScript to set the theme before main() is called"""
+    global _web_theme
+    _web_theme = theme
 
 def show_exception_box(log_msg):
     if QtWidgets.QApplication.instance() is not None:
@@ -70,6 +77,10 @@ def main(app):
     # Not sure of the best way to do this.
     global window
     window = MainWindow(app)
-    window.showMaximized()
+    # Hide title bar and show fullscreen in web version since it's running in a browser
+    window.setWindowFlags(Qt.FramelessWindowHint)
+    # Set dark background to match theme and avoid harsh white bar
+    window.setStyleSheet("QMainWindow { background-color: #2d2d2d; }")
+    window.showFullScreen()
 
     app.processEvents()

@@ -475,6 +475,9 @@ class KeyboardWidget(QWidget):
     def minimumSizeHint(self):
         return QSize(self.width, self.height)
 
+    def sizeHint(self):
+        return QSize(self.width, self.height)
+
     def hit_test(self, pos):
         """ Returns key, hit_masked_part """
 

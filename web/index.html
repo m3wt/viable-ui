@@ -6,7 +6,7 @@
             font-family: sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #ccc;
+            background-color: #2d2d2d;
             overscroll-behavior-y: none;
         }
 
@@ -149,6 +149,8 @@
                 saveLayout(e.data.layout);
             } else if (e.data.cmd == "fatal_error") {
                 alert(e.data.msg);
+            } else if (e.data.cmd == "storage_set") {
+                localStorage.setItem(e.data.key, e.data.value);
             }
         }
 
@@ -249,7 +251,8 @@
             _vialglue_set_device_desc(allocateUTF8(JSON.stringify(device_desc)));
 
             btn.value = "Starting up....";
-            PThread.runningWorkers[0].postMessage({ cmd: "py", payload: "import webmain;webmain.main(qtApp)" });
+            var theme = localStorage.getItem("theme") || "Dark";
+            PThread.runningWorkers[0].postMessage({ cmd: "py", payload: "import webmain;webmain.set_theme('" + theme + "');webmain.main(qtApp)" });
 
             g_animation = setInterval(update_animation, 500);
             g_animation_counter = 0;

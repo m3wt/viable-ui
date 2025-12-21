@@ -15,15 +15,15 @@ VENV_DIR="/venv/docker_venv"
 if [ -f "$VENV_DIR/bin/activate" ]; then
     echo "Using cached virtual environment..."
     . "$VENV_DIR/bin/activate"
-    # Update requirements if they changed
-    pip install -q -r requirements.txt
 else
     echo "Creating new virtual environment..."
     /python36/prefix/bin/python3 -m venv "$VENV_DIR"
     . "$VENV_DIR/bin/activate"
-    pip install --upgrade pip
-    pip install -r requirements.txt
 fi
+
+# Always ensure pip is up to date and requirements are installed
+pip install --upgrade pip
+pip install -r requirements.txt
 
 echo "Running fbs freeze..."
 fbs freeze

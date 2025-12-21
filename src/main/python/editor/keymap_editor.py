@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import json
 
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget, QScrollArea, QSizePolicy
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 
 from any_keycode_dialog import AnyKeycodeDialog
 from editor.basic_editor import BasicEditor
@@ -31,7 +31,7 @@ class KeymapEditor(BasicEditor):
         self.layout_editor = layout_editor
 
         self.layout_layers = QHBoxLayout()
-        self.layout_size = QVBoxLayout()
+        self.layout_size = QHBoxLayout()
         layer_label = QLabel(tr("KeymapEditor", "Layer"))
 
         layout_labels_container = QHBoxLayout()
@@ -45,12 +45,25 @@ class KeymapEditor(BasicEditor):
         self.container.clicked.connect(self.on_key_clicked)
         self.container.deselected.connect(self.on_key_deselected)
 
+        # Wrap keyboard in scroll area with auto-hiding scrollbars
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidget(self.container)
+        self.scroll_area.setWidgetResizable(False)  # Keep keyboard at natural size
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll_area.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.scroll_area.setAlignment(Qt.AlignCenter)
+        # Transparent viewport required for keyboard key bevels to render correctly
+        self.scroll_area.viewport().setStyleSheet("background: transparent;")
+        # Add subtle border to show scroll area edges
+        self.scroll_area.setStyleSheet("QScrollArea { border: 1px solid palette(mid); }")
+
         layout = QVBoxLayout()
         layout.addLayout(layout_labels_container)
-        layout.addWidget(self.container)
-        layout.setAlignment(self.container, Qt.AlignHCenter)
+        layout.addWidget(self.scroll_area, 1)  # stretch factor 1 ensures it gets space
         w = ClickableWidget()
         w.setLayout(layout)
+        w.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         w.clicked.connect(self.on_empty_space_clicked)
 
         self.layer_buttons = []
@@ -103,11 +116,14 @@ class KeymapEditor(BasicEditor):
             self.layer_buttons.append(btn)
 
     def adjust_size(self, minus):
+        current = self.container.get_scale()
         if minus:
-            self.container.set_scale(self.container.get_scale() - 0.1)
+            new_scale = max(0.5, current - 0.1)
         else:
-            self.container.set_scale(self.container.get_scale() + 0.1)
+            new_scale = min(3.0, current + 0.1)
+        self.container.set_scale(new_scale)
         self.refresh_layer_display()
+        self._update_container_size()
 
     def rebuild(self, device):
         super().rebuild(device)
@@ -125,7 +141,15 @@ class KeymapEditor(BasicEditor):
             self.tabbed_keycodes.recreate_keycode_buttons()
             TabbedKeycodes.tray.recreate_keycode_buttons()
             self.refresh_layer_display()
+
+            # Delay resize to after event loop processes layout
+            QTimer.singleShot(0, self._update_container_size)
         self.container.setEnabled(self.valid())
+
+    def _update_container_size(self):
+        """Update container size after layout is processed"""
+        self.container.resize(self.container.sizeHint())
+        self.container.update()  # Force repaint after resize
 
     def valid(self):
         return isinstance(self.device, VialKeyboard)

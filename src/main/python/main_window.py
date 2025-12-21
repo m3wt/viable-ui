@@ -220,20 +220,21 @@ class MainWindow(QMainWindow):
         self.security_menu.addSeparator()
         self.security_menu.addAction(keyboard_reset_act)
 
-        if sys.platform != "emscripten":
-            self.theme_menu = self.menuBar().addMenu(tr("Menu", "Theme"))
-            theme_group = QActionGroup(self)
-            selected_theme = self.get_theme()
-            for name, _ in [("System", None)] + themes.themes:
-                act = QAction(tr("MenuTheme", name), self)
-                act.triggered.connect(lambda x,name=name: self.set_theme(name))
-                act.setCheckable(True)
-                act.setChecked(selected_theme == name)
-                theme_group.addAction(act)
-                self.theme_menu.addAction(act)
-            # check "System" if nothing else is selected
-            if theme_group.checkedAction() is None:
-                theme_group.actions()[0].setChecked(True)
+        self.theme_menu = self.menuBar().addMenu(tr("Menu", "Theme"))
+        theme_group = QActionGroup(self)
+        selected_theme = self.get_theme()
+        # Skip "System" theme on web since there's no system theme in browser
+        theme_list = themes.themes if sys.platform == "emscripten" else [("System", None)] + themes.themes
+        for name, _ in theme_list:
+            act = QAction(tr("MenuTheme", name), self)
+            act.triggered.connect(lambda x,name=name: self.set_theme(name))
+            act.setCheckable(True)
+            act.setChecked(selected_theme == name)
+            theme_group.addAction(act)
+            self.theme_menu.addAction(act)
+        # check first theme if nothing else is selected
+        if theme_group.checkedAction() is None:
+            theme_group.actions()[0].setChecked(True)
 
         about_vial_act = QAction(tr("MenuAbout", "About Vial..."), self)
         about_vial_act.triggered.connect(self.about_vial)
@@ -416,14 +417,27 @@ class MainWindow(QMainWindow):
         KeycodeDisplay.set_keymap_override(KEYMAPS[index][1])
 
     def get_theme(self):
+        if sys.platform == "emscripten":
+            # Theme is loaded from localStorage via JavaScript before app starts
+            import webmain
+            return webmain._web_theme
         return self.settings.value("theme", "Dark")
 
     def set_theme(self, theme):
         themes.Theme.set_theme(theme)
-        self.settings.setValue("theme", theme)
-        msg = QMessageBox()
-        msg.setText(tr("MainWindow", "In order to fully apply the theme you should restart the application."))
-        msg.exec_()
+        if sys.platform == "emscripten":
+            import vialglue
+            vialglue.storage_set("theme", theme)
+            # On web, use non-blocking show() instead of exec_() to avoid emscripten_sleep
+            self.msg_theme = QMessageBox()
+            self.msg_theme.setText(tr("MainWindow", "Theme saved. Refresh the page to fully apply."))
+            self.msg_theme.setModal(True)
+            self.msg_theme.show()
+        else:
+            self.settings.setValue("theme", theme)
+            msg = QMessageBox()
+            msg.setText(tr("MainWindow", "In order to fully apply the theme you should restart the application."))
+            msg.exec_()
 
     def on_tab_changed(self, index):
         TabbedKeycodes.close_tray()
