@@ -37,12 +37,7 @@ class AltRepeatKeyEntryUI(QObject):
         self.container.addWidget(self.index_label, 0, col)
         col += 1
 
-        # Enable header
-        en_lbl = QLabel("On")
-        en_lbl.setStyleSheet("font-size: 9px; color: palette(mid);")
-        en_lbl.setAlignment(Qt.AlignCenter)
-        en_lbl.setToolTip("Enable this alt repeat key entry")
-        self.container.addWidget(en_lbl, 0, col)
+        # Enable column (no header, just checkbox below)
         col += 1
 
         # Key headers with tooltips

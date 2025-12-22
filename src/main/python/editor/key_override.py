@@ -1,103 +1,156 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5 import QtCore
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtWidgets import QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout, QLabel, QCheckBox, QScrollArea, QFrame, QToolButton
+from PyQt5.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
+                             QLabel, QCheckBox, QScrollArea, QPushButton, QMenu, QWidgetAction,
+                             QToolButton, QFrame)
 
 from protocol.constants import VIAL_PROTOCOL_DYNAMIC
-from util import make_scrollable, tr
 from widgets.key_widget import KeyWidget
+from widgets.flowlayout import FlowLayout
+from tabbed_keycodes import TabbedKeycodes
 from protocol.key_override import KeyOverrideOptions, KeyOverrideEntry
 from vial_device import VialKeyboard
 from editor.basic_editor import BasicEditor
-from widgets.checkbox_no_padding import CheckBoxNoPadding
-from widgets.tab_widget_keycodes import TabWidgetWithKeycodes
 
 
-class ModsUI(QWidget):
+class LayersPopup(QMenu):
+    """Popup menu for layer selection"""
 
     changed = pyqtSignal()
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-        self.mods = [
-            CheckBoxNoPadding("LCtrl"),
-            CheckBoxNoPadding("LShift"),
-            CheckBoxNoPadding("LAlt"),
-            CheckBoxNoPadding("LGui"),
-            CheckBoxNoPadding("RCtrl"),
-            CheckBoxNoPadding("RShift"),
-            CheckBoxNoPadding("RAlt"),
-            CheckBoxNoPadding("RGui"),
-        ]
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
 
-        for w in self.mods:
-            w.stateChanged.connect(self.on_change)
+        # Layer checkboxes in 2 rows of 8
+        grid = QGridLayout()
+        grid.setSpacing(2)
+        self.layer_chks = []
+        for i in range(16):
+            chk = QCheckBox(str(i))
+            chk.stateChanged.connect(self.on_change)
+            row = i // 8
+            col = i % 8
+            grid.addWidget(chk, row, col)
+            self.layer_chks.append(chk)
+        layout.addLayout(grid)
 
-        container = QGridLayout()
-        container.addWidget(self.mods[0], 0, 0)
-        container.addWidget(self.mods[4], 1, 0)
+        # Enable/Disable all buttons
+        btn_layout = QHBoxLayout()
+        btn_all = QPushButton("All")
+        btn_all.setFixedWidth(50)
+        btn_all.clicked.connect(self.enable_all)
+        btn_none = QPushButton("None")
+        btn_none.setFixedWidth(50)
+        btn_none.clicked.connect(self.disable_all)
+        btn_layout.addWidget(btn_all)
+        btn_layout.addWidget(btn_none)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
 
-        container.addWidget(self.mods[1], 0, 1)
-        container.addWidget(self.mods[5], 1, 1)
-
-        container.addWidget(self.mods[2], 0, 2)
-        container.addWidget(self.mods[6], 1, 2)
-
-        container.addWidget(self.mods[3], 0, 3)
-        container.addWidget(self.mods[7], 1, 3)
-
-        self.setLayout(container)
+        widget.setLayout(layout)
+        action = QWidgetAction(self)
+        action.setDefaultWidget(widget)
+        self.addAction(action)
 
     def load(self, data):
-        for x, chk in enumerate(self.mods):
+        for x, chk in enumerate(self.layer_chks):
+            chk.blockSignals(True)
             chk.setChecked(bool(data & (1 << x)))
+            chk.blockSignals(False)
 
     def save(self):
         out = 0
-        for x, chk in enumerate(self.mods):
+        for x, chk in enumerate(self.layer_chks):
             out |= int(chk.isChecked()) << x
         return out
 
+    def get_summary(self):
+        """Return summary text for button"""
+        count = sum(1 for chk in self.layer_chks if chk.isChecked())
+        if count == 16:
+            return "All"
+        elif count == 0:
+            return "None"
+        else:
+            return str(count)
+
+    def enable_all(self):
+        for chk in self.layer_chks:
+            chk.setChecked(True)
+
+    def disable_all(self):
+        for chk in self.layer_chks:
+            chk.setChecked(False)
+
     def on_change(self):
         self.changed.emit()
 
 
-class OptionsUI(QWidget):
+class OptionsPopup(QMenu):
+    """Popup menu for options"""
 
     changed = pyqtSignal()
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-        container = QVBoxLayout()
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(2)
 
-        self.opt_activation_trigger_down = CheckBoxNoPadding("Activate when the trigger key is pressed down")
-        self.opt_activation_required_mod_down = CheckBoxNoPadding("Activate when a necessary modifier is pressed down")
-        self.opt_activation_negative_mod_up = CheckBoxNoPadding("Activate when a negative modifier is released")
-        self.opt_one_mod = CheckBoxNoPadding("Activate on one modifier")
-        self.opt_no_reregister_trigger = CheckBoxNoPadding("Don't deactivate when another key is pressed down")
-        self.opt_no_unregister_on_other_key_down = CheckBoxNoPadding(
-            "Don't register the trigger key again after the override is deactivated")
+        self.opt_activation_trigger_down = QCheckBox("Activate on trigger down")
+        self.opt_activation_trigger_down.setToolTip("Activate when the trigger key is pressed down")
 
-        for w in [self.opt_activation_trigger_down, self.opt_activation_required_mod_down,
-                  self.opt_activation_negative_mod_up, self.opt_one_mod, self.opt_no_reregister_trigger,
-                  self.opt_no_unregister_on_other_key_down]:
-            w.stateChanged.connect(self.on_change)
-            container.addWidget(w)
+        self.opt_activation_required_mod_down = QCheckBox("Activate on mod down")
+        self.opt_activation_required_mod_down.setToolTip("Activate when a required modifier is pressed down")
 
-        self.setLayout(container)
+        self.opt_activation_negative_mod_up = QCheckBox("Activate on negative mod up")
+        self.opt_activation_negative_mod_up.setToolTip("Activate when a negative modifier is released")
 
-    def on_change(self):
-        self.changed.emit()
+        self.opt_one_mod = QCheckBox("Any trigger mod activates")
+        self.opt_one_mod.setToolTip("Activate on any single trigger modifier instead of requiring all")
+
+        self.opt_no_reregister_trigger = QCheckBox("No reregister on deactivate")
+        self.opt_no_reregister_trigger.setToolTip("Don't register the trigger key again after override deactivates")
+
+        self.opt_no_unregister_on_other_key_down = QCheckBox("No unregister on other key")
+        self.opt_no_unregister_on_other_key_down.setToolTip("Don't deactivate when another key is pressed")
+
+        self.all_opts = [
+            self.opt_activation_trigger_down,
+            self.opt_activation_required_mod_down,
+            self.opt_activation_negative_mod_up,
+            self.opt_one_mod,
+            self.opt_no_reregister_trigger,
+            self.opt_no_unregister_on_other_key_down
+        ]
+
+        for opt in self.all_opts:
+            opt.stateChanged.connect(self.on_change)
+            layout.addWidget(opt)
+
+        widget.setLayout(layout)
+        action = QWidgetAction(self)
+        action.setDefaultWidget(widget)
+        self.addAction(action)
 
     def load(self, opt: KeyOverrideOptions):
+        for w in self.all_opts:
+            w.blockSignals(True)
         self.opt_activation_trigger_down.setChecked(opt.activation_trigger_down)
         self.opt_activation_required_mod_down.setChecked(opt.activation_required_mod_down)
         self.opt_activation_negative_mod_up.setChecked(opt.activation_negative_mod_up)
         self.opt_one_mod.setChecked(opt.one_mod)
         self.opt_no_reregister_trigger.setChecked(opt.no_reregister_trigger)
         self.opt_no_unregister_on_other_key_down.setChecked(opt.no_unregister_on_other_key_down)
+        for w in self.all_opts:
+            w.blockSignals(False)
 
     def save(self) -> KeyOverrideOptions:
         opts = KeyOverrideOptions()
@@ -109,153 +162,235 @@ class OptionsUI(QWidget):
         opts.no_unregister_on_other_key_down = self.opt_no_unregister_on_other_key_down.isChecked()
         return opts
 
-
-class LayersUI(QWidget):
-
-    changed = pyqtSignal()
-
-    def __init__(self):
-        super().__init__()
-        container = QGridLayout()
-        buttons = QHBoxLayout()
-        self.layer_chks = [CheckBoxNoPadding(str(x)) for x in range(16)]
-        for w in self.layer_chks:
-            w.stateChanged.connect(self.on_change)
-        btn_all_layers = QToolButton()
-        btn_all_layers.setText(tr("KeyOverride", "Enable all"))
-        btn_all_layers.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        btn_no_layers = QToolButton()
-        btn_no_layers.setText(tr("KeyOverride", "Disable all"))
-        btn_no_layers.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        btn_all_layers.clicked.connect(self.on_enable_all_layers)
-        btn_no_layers.clicked.connect(self.on_disable_all_layers)
-
-        for x in range(8):
-            container.addWidget(self.layer_chks[x], 0, x)
-            container.addWidget(self.layer_chks[x + 8], 1, x)
-
-        buttons.addWidget(btn_all_layers)
-        buttons.addWidget(btn_no_layers)
-        buttons.addStretch()
-        container.addLayout(buttons, 2, 0, 1, -1)
-
-        self.setLayout(container)
-
-    def load(self, data):
-        for x, w in enumerate(self.layer_chks):
-            w.setChecked(bool(data & (1 << x)))
-
-    def save(self):
-        out = 0
-        for x, w in enumerate(self.layer_chks):
-            out |= int(w.isChecked()) << x
-        return out
+    def get_summary(self):
+        """Return summary text for button"""
+        count = sum(1 for opt in self.all_opts if opt.isChecked())
+        return str(count) if count > 0 else "0"
 
     def on_change(self):
         self.changed.emit()
-
-    def on_enable_all_layers(self):
-        for x, w in enumerate(self.layer_chks):
-            w.setChecked(True)
-
-    def on_disable_all_layers(self):
-        for x, w in enumerate(self.layer_chks):
-            w.setChecked(False)
 
 
 class KeyOverrideEntryUI(QObject):
+    """A single key override entry in compact card format"""
 
-    changed = pyqtSignal()
+    changed = pyqtSignal(int)  # emits entry index
 
     def __init__(self, idx):
         super().__init__()
-
-        self.enable_chk = QCheckBox()
-        self.layers = LayersUI()
-        self.trigger_key = KeyWidget()
-        self.trigger_mods = ModsUI()
-        self.negative_mods = ModsUI()
-        self.suppressed_mods = ModsUI()
-        self.key_replacement = KeyWidget()
-        self.options = OptionsUI()
-
-        self.widgets = [self.enable_chk]
-        self.enable_chk.stateChanged.connect(self.on_change)
-        for w in [self.layers, self.options, self.trigger_key, self.trigger_mods, self.negative_mods,
-                  self.suppressed_mods, self.key_replacement]:
-            w.changed.connect(self.on_change)
-            self.widgets.append(w)
-
         self.idx = idx
-        self.container = QGridLayout()
-        self.populate_container()
+        self.all_keys = []
 
-        w = QWidget()
-        w.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
-        w.setLayout(self.container)
-        l = QVBoxLayout()
-        l.addWidget(w)
-        l.setAlignment(w, QtCore.Qt.AlignHCenter)
-        self.w2 = make_scrollable(l)
+        # Main container
+        self.container = QVBoxLayout()
+        self.container.setSpacing(4)
+        self.container.setContentsMargins(8, 8, 8, 8)
 
-    def populate_container(self):
-        self.container.addWidget(QLabel("Enable"), 0, 0)
-        self.container.addWidget(self.enable_chk, 0, 1)
+        # Row 1: Index, enable, trigger → replacement, layers btn, options btn
+        row1 = QHBoxLayout()
+        row1.setSpacing(4)
 
-        self.container.addWidget(QLabel("Enable on layers"), 1, 0)
-        self.container.addWidget(self.layers, 1, 1)
+        # Index label
+        self.index_label = QLabel(str(idx + 1))
+        self.index_label.setStyleSheet("font-size: 9px; color: palette(mid);")
+        self.index_label.setFixedWidth(20)
+        self.index_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        row1.addWidget(self.index_label)
 
-        self.container.addWidget(QLabel("Trigger"), 2, 0)
-        self.container.addWidget(self.trigger_key, 2, 1)
+        # Enable checkbox
+        self.enable_chk = QCheckBox()
+        self.enable_chk.setToolTip("Enable this key override")
+        self.enable_chk.stateChanged.connect(self.on_change_internal)
+        row1.addWidget(self.enable_chk)
 
-        self.container.addWidget(QLabel("Trigger mods"), 3, 0)
-        self.container.addWidget(self.trigger_mods, 3, 1)
+        # Trigger key
+        self.trigger_key = KeyWidget()
+        self.trigger_key.changed.connect(lambda: self.on_key_changed_at(0))
+        row1.addWidget(self.trigger_key)
+        self.all_keys.append(self.trigger_key)
 
-        self.container.addWidget(QLabel("Negative mods"), 4, 0)
-        self.container.addWidget(self.negative_mods, 4, 1)
+        # Arrow
+        arrow = QLabel("→")
+        arrow.setStyleSheet("font-size: 14px; color: palette(mid);")
+        row1.addWidget(arrow)
 
-        self.container.addWidget(QLabel("Suppressed mods"), 5, 0)
-        self.container.addWidget(self.suppressed_mods, 5, 1)
+        # Replacement key
+        self.replacement_key = KeyWidget()
+        self.replacement_key.changed.connect(lambda: self.on_key_changed_at(1))
+        row1.addWidget(self.replacement_key)
+        self.all_keys.append(self.replacement_key)
 
-        self.container.addWidget(QLabel("Replacement"), 6, 0)
-        self.container.addWidget(self.key_replacement, 6, 1)
+        row1.addSpacing(20)
 
-        self.container.addWidget(QLabel("Options"), 7, 0)
-        self.container.addWidget(self.options, 7, 1)
+        # Layers and Options stacked vertically
+        buttons_layout = QVBoxLayout()
+        buttons_layout.setSpacing(2)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.layers_popup = LayersPopup()
+        self.layers_popup.changed.connect(self.on_layers_changed)
+        self.layers_btn = QToolButton()
+        self.layers_btn.setText("Layers: All")
+        self.layers_btn.setToolTip("Select which layers this override is active on")
+        self.layers_btn.setPopupMode(QToolButton.InstantPopup)
+        self.layers_btn.setMenu(self.layers_popup)
+        buttons_layout.addWidget(self.layers_btn)
+
+        self.options_popup = OptionsPopup()
+        self.options_popup.changed.connect(self.on_options_changed)
+        self.options_btn = QToolButton()
+        self.options_btn.setText("Options: 0")
+        self.options_btn.setToolTip("Configure override behavior options")
+        self.options_btn.setPopupMode(QToolButton.InstantPopup)
+        self.options_btn.setMenu(self.options_popup)
+        buttons_layout.addWidget(self.options_btn)
+
+        row1.addLayout(buttons_layout)
+
+        self.container.addLayout(row1)
+
+        # Mod grid - header row + 3 mod rows in a single grid for alignment
+        mod_grid = QGridLayout()
+        mod_grid.setContentsMargins(0, 0, 0, 0)
+        mod_grid.setSpacing(2)
+
+        # Header row (row 0)
+        # Empty cell for row label column
+        mod_grid.addWidget(QLabel(""), 0, 0)
+
+        mod_names = ["LC", "LS", "LA", "LG", "RC", "RS", "RA", "RG"]
+        mod_tooltips = ["Left Ctrl", "Left Shift", "Left Alt", "Left GUI",
+                        "Right Ctrl", "Right Shift", "Right Alt", "Right GUI"]
+        for col, (name, tooltip) in enumerate(zip(mod_names, mod_tooltips)):
+            lbl = QLabel(name)
+            lbl.setStyleSheet("font-size: 9px; color: palette(mid);")
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setToolTip(tooltip)
+            mod_grid.addWidget(lbl, 0, col + 1)
+
+        # Mod rows with labels and checkboxes
+        self.mod_rows = []
+
+        row_data = [
+            ("Trigger", "Trigger modifiers - must be held for override to activate"),
+            ("Negative", "Negative modifiers - override won't activate if these are held"),
+            ("Suppress", "Suppressed modifiers - these won't be sent when override activates"),
+        ]
+
+        for row_idx, (label_text, row_tooltip) in enumerate(row_data):
+            grid_row = row_idx + 1  # +1 for header
+
+            # Row label
+            row_label = QLabel(label_text)
+            row_label.setStyleSheet("font-size: 9px; color: palette(mid);")
+            row_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            row_label.setToolTip(row_tooltip)
+            mod_grid.addWidget(row_label, grid_row, 0)
+
+            # Checkboxes
+            checkboxes = []
+            for col, tooltip in enumerate(mod_tooltips):
+                chk = QCheckBox()
+                chk.setToolTip(tooltip)
+                chk.stateChanged.connect(self.on_change_internal)
+                mod_grid.addWidget(chk, grid_row, col + 1)
+                checkboxes.append(chk)
+            self.mod_rows.append(checkboxes)
+
+        # Wrap grid in widget to control sizing
+        mod_widget = QWidget()
+        mod_widget.setLayout(mod_grid)
+        mod_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.container.addWidget(mod_widget)
+
+        # Create the widget with frame
+        self.widget_container = QFrame()
+        self.widget_container.setFrameStyle(QFrame.StyledPanel)
+        self.widget_container.setLayout(self.container)
+        self.widget_container.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
     def widget(self):
-        return self.w2
+        return self.widget_container
+
+    def _load_mods(self, row_idx, data):
+        """Load modifier data into a row of checkboxes"""
+        for x, chk in enumerate(self.mod_rows[row_idx]):
+            chk.blockSignals(True)
+            chk.setChecked(bool(data & (1 << x)))
+            chk.blockSignals(False)
+
+    def _save_mods(self, row_idx):
+        """Save modifier data from a row of checkboxes"""
+        out = 0
+        for x, chk in enumerate(self.mod_rows[row_idx]):
+            out |= int(chk.isChecked()) << x
+        return out
 
     def load(self, ko):
-        for w in self.widgets:
-            w.blockSignals(True)
+        # Block signals
+        self.enable_chk.blockSignals(True)
+        for k in self.all_keys:
+            k.blockSignals(True)
 
         self.enable_chk.setChecked(ko.options.enabled)
         self.trigger_key.set_keycode(ko.trigger)
-        self.key_replacement.set_keycode(ko.replacement)
-        self.layers.load(ko.layers)
-        self.trigger_mods.load(ko.trigger_mods)
-        self.negative_mods.load(ko.negative_mod_mask)
-        self.suppressed_mods.load(ko.suppressed_mods)
-        self.options.load(ko.options)
+        self.replacement_key.set_keycode(ko.replacement)
+        self.layers_popup.load(ko.layers)
+        self._load_mods(0, ko.trigger_mods)
+        self._load_mods(1, ko.negative_mod_mask)
+        self._load_mods(2, ko.suppressed_mods)
+        self.options_popup.load(ko.options)
 
-        for w in self.widgets:
-            w.blockSignals(False)
+        # Update button labels
+        self.layers_btn.setText(f"Layers: {self.layers_popup.get_summary()}")
+        self.options_btn.setText(f"Options: {self.options_popup.get_summary()}")
+
+        # Unblock signals
+        self.enable_chk.blockSignals(False)
+        for k in self.all_keys:
+            k.blockSignals(False)
 
     def save(self):
         ko = KeyOverrideEntry()
-        ko.options = self.options.save()
+        ko.options = self.options_popup.save()
         ko.options.enabled = self.enable_chk.isChecked()
         ko.trigger = self.trigger_key.keycode
-        ko.replacement = self.key_replacement.keycode
-        ko.layers = self.layers.save()
-        ko.trigger_mods = self.trigger_mods.save()
-        ko.negative_mod_mask = self.negative_mods.save()
-        ko.suppressed_mods = self.suppressed_mods.save()
+        ko.replacement = self.replacement_key.keycode
+        ko.layers = self.layers_popup.save()
+        ko.trigger_mods = self._save_mods(0)
+        ko.negative_mod_mask = self._save_mods(1)
+        ko.suppressed_mods = self._save_mods(2)
         return ko
 
-    def on_change(self):
-        self.changed.emit()
+    def is_empty(self):
+        """Check if this entry has no keys defined"""
+        for kc in self.all_keys:
+            if kc.keycode and kc.keycode != "KC_NO":
+                return False
+        return True
+
+    def on_key_changed_at(self, key_idx):
+        """Called when a key changes - auto-advance to next"""
+        self.changed.emit(self.idx)
+
+        # Auto-advance: Trigger -> Replacement
+        if key_idx == 0:
+            next_key = self.replacement_key
+            next_key.active_key = next_key.widgets[0]
+            next_key.active_mask = False
+            next_key.update()
+            TabbedKeycodes.open_tray(next_key)
+
+    def on_change_internal(self):
+        self.changed.emit(self.idx)
+
+    def on_layers_changed(self):
+        self.layers_btn.setText(f"Layers: {self.layers_popup.get_summary()}")
+        self.changed.emit(self.idx)
+
+    def on_options_changed(self):
+        self.options_btn.setText(f"Options: {self.options_popup.get_summary()}")
+        self.changed.emit(self.idx)
 
 
 class KeyOverride(BasicEditor):
@@ -263,25 +398,115 @@ class KeyOverride(BasicEditor):
     def __init__(self):
         super().__init__()
         self.keyboard = None
+        self.entries = []
+        self.entries_available = []
+        self.show_all = False
 
-        self.key_override_entries = []
-        self.key_override_entries_available = []
-        self.tabs = TabWidgetWithKeycodes()
+        # Pre-create entry UIs
         for x in range(128):
             entry = KeyOverrideEntryUI(x)
             entry.changed.connect(self.on_change)
-            self.key_override_entries_available.append(entry)
+            self.entries_available.append(entry)
 
-        self.addWidget(self.tabs)
+        # Header with count and buttons
+        header = QHBoxLayout()
+        self.count_label = QLabel("0 of 0 key overrides defined")
+        header.addWidget(self.count_label)
+        header.addStretch()
+
+        self.add_btn = QPushButton("+ Add")
+        self.add_btn.setFixedWidth(60)
+        self.add_btn.clicked.connect(self.on_add_entry)
+        header.addWidget(self.add_btn)
+
+        self.show_all_btn = QPushButton("Show All")
+        self.show_all_btn.setCheckable(True)
+        self.show_all_btn.setFixedWidth(80)
+        self.show_all_btn.toggled.connect(self.on_show_all_toggled)
+        header.addWidget(self.show_all_btn)
+
+        header_widget = QWidget()
+        header_widget.setLayout(header)
+        self.addWidget(header_widget)
+
+        # Scrollable area for entries
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        # Flow layout for entries
+        self.entries_container = QWidget()
+        self.entries_layout = FlowLayout()
+        self.entries_layout.setSpacing(8)
+        self.entries_container.setLayout(self.entries_layout)
+
+        self.scroll.setWidget(self.entries_container)
+        self.addWidget(self.scroll)
 
     def rebuild_ui(self):
-        while self.tabs.count() > 0:
-            self.tabs.removeTab(0)
-        self.key_override_entries = self.key_override_entries_available[:self.keyboard.key_override_count]
-        for x, e in enumerate(self.key_override_entries):
-            self.tabs.addTab(e.widget(), str(x + 1))
-        for x, e in enumerate(self.key_override_entries):
+        # Clear layout
+        while self.entries_layout.count():
+            item = self.entries_layout.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+
+        # Load data into entries
+        self.entries = self.entries_available[:self.keyboard.key_override_count]
+        for x, e in enumerate(self.entries):
             e.load(self.keyboard.key_override_get(x))
+
+        self.refresh_display()
+
+    def refresh_display(self):
+        """Refresh which entries are shown based on show_all setting"""
+        # Clear layout
+        while self.entries_layout.count():
+            item = self.entries_layout.takeAt(0)
+            if item.widget():
+                item.widget().hide()
+
+        # Count defined entries and add widgets
+        defined_count = 0
+        for e in self.entries:
+            if not e.is_empty():
+                defined_count += 1
+
+            if self.show_all or not e.is_empty():
+                e.widget().show()
+                self.entries_layout.addWidget(e.widget())
+
+        # Update count label
+        self.count_label.setText(f"{defined_count} of {len(self.entries)} key overrides defined")
+
+        # Update button text
+        if self.show_all:
+            self.show_all_btn.setText("Hide Empty")
+        else:
+            self.show_all_btn.setText("Show All")
+
+    def on_show_all_toggled(self, checked):
+        self.show_all = checked
+        self.refresh_display()
+
+    def on_add_entry(self):
+        """Find first empty entry, show it, and select its first key"""
+        for e in self.entries:
+            if e.is_empty():
+                # Make sure this entry is visible
+                if not self.show_all:
+                    e.widget().show()
+                    self.entries_layout.addWidget(e.widget())
+
+                # Select the first key
+                first_key = e.all_keys[0]
+                first_key.active_key = first_key.widgets[0]
+                first_key.active_mask = False
+                first_key.update()
+                TabbedKeycodes.open_tray(first_key)
+
+                # Scroll to make it visible
+                self.scroll.ensureWidgetVisible(e.widget())
+                return
 
     def rebuild(self, device):
         super().rebuild(device)
@@ -294,6 +519,12 @@ class KeyOverride(BasicEditor):
                (self.device.keyboard and self.device.keyboard.vial_protocol >= VIAL_PROTOCOL_DYNAMIC
                 and self.device.keyboard.key_override_count > 0)
 
-    def on_change(self):
-        for x, e in enumerate(self.key_override_entries):
-            self.keyboard.key_override_set(x, self.key_override_entries[x].save())
+    def on_change(self, idx):
+        self.keyboard.key_override_set(idx, self.entries[idx].save())
+        # Refresh display in case entry became empty or non-empty
+        if not self.show_all:
+            self.refresh_display()
+        else:
+            # Just update count
+            defined_count = sum(1 for e in self.entries if not e.is_empty())
+            self.count_label.setText(f"{defined_count} of {len(self.entries)} key overrides defined")
