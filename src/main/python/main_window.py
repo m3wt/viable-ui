@@ -325,6 +325,7 @@ class MainWindow(QMainWindow):
         profile = {
             "version": 1,
             "format": "svil",
+            "protocol_version": self.keymap_editor.keyboard.sval_protocol_version,
             "svalboard": svalboard_state,
             "vil": vil_data
         }
