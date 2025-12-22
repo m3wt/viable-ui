@@ -6,6 +6,7 @@ from widgets.keyboard_widget import KeyboardWidget
 from kle_serial import Key
 from tabbed_keycodes import TabbedKeycodes, keycode_filter_masked, keycode_filter_any
 from util import KeycodeDisplay
+from unlocker import Unlocker
 
 
 class KeyWidget(KeyboardWidget):
@@ -48,6 +49,16 @@ class KeyWidget(KeyboardWidget):
 
     def mouseReleaseEvent(self, ev):
         ev.accept()
+
+    def mouseDoubleClickEvent(self, ev):
+        """Handle double-click to navigate to macro editor if this is a macro key"""
+        if self.keycode and self.keycode.startswith("M") and self.keycode[1:].isdigit():
+            macro_index = int(self.keycode[1:])
+            if Unlocker.global_main_window:
+                Unlocker.global_main_window.navigate_to_macro(macro_index)
+                ev.accept()
+                return
+        super().mouseDoubleClickEvent(ev)
 
     def on_keycode_changed(self, keycode):
         """ Unlike set_keycode, this handles setting masked keycode inside the mask """

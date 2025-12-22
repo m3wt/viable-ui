@@ -408,6 +408,12 @@ class KeyboardWidget(QWidget):
         mask_font = qp.font()
         mask_font.setPointSize(round(mask_font.pointSize() * 0.8))
 
+        # Smaller font for longer labels (e.g., macro text)
+        small_font = qp.font()
+        small_font.setPointSize(round(small_font.pointSize() * 0.7))
+
+        default_font = qp.font()
+
         for idx, key in enumerate(self.widgets):
             qp.save()
 
@@ -450,7 +456,26 @@ class KeyboardWidget(QWidget):
             else:
                 # Draw the legend
                 qp.setPen(key.color if key.color else text_pen)
-                qp.drawText(key.rect, Qt.AlignCenter, key.text)
+                # Use smaller font for longer text (e.g., macro previews)
+                # Macro previews have format "M{n}\n{text}" - center M#, left-align preview
+                is_macro_preview = key.text.startswith("M") and '\n' in key.text
+                if len(key.text) > 6 or is_macro_preview:
+                    qp.setFont(small_font)
+                else:
+                    qp.setFont(default_font)
+                if is_macro_preview:
+                    parts = key.text.split('\n', 1)
+                    font_height = qp.fontMetrics().height()
+                    gap = font_height // 3  # Small gap between lines
+                    total_height = font_height * 2 + gap
+                    top_offset = (key.rect.height() - total_height) // 2
+                    # Draw M# centered, preview left-aligned below
+                    top_rect = key.rect.adjusted(0, top_offset, 0, 0)
+                    bot_rect = key.rect.adjusted(2, top_offset + font_height + gap, -2, 0)
+                    qp.drawText(top_rect, Qt.AlignHCenter | Qt.AlignTop, parts[0])
+                    qp.drawText(bot_rect, Qt.AlignLeft | Qt.AlignTop, parts[1] if len(parts) > 1 else "")
+                else:
+                    qp.drawText(key.rect, Qt.AlignCenter, key.text)
 
             # Draw the extra shape (encoder arrow)
             qp.setPen(text_pen)

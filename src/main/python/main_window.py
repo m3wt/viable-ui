@@ -605,6 +605,17 @@ class MainWindow(QMainWindow):
         self.about_dialog.setModal(True)
         self.about_dialog.show()
 
+    def navigate_to_macro(self, macro_index):
+        """Navigate to the Macros tab and select the specified macro"""
+        # Find the Macros tab
+        for i in range(self.tabs.count()):
+            if self.tabs.tabText(i) == "Macros":
+                self.tabs.setCurrentIndex(i)
+                # Select the macro tab within the macro recorder
+                if macro_index < self.macro_recorder.tabs.count():
+                    self.macro_recorder.tabs.setCurrentIndex(macro_index)
+                break
+
     def closeEvent(self, e):
         self.settings.setValue("size", self.size())
         self.settings.setValue("pos", self.pos())

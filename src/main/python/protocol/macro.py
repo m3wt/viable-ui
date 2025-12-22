@@ -239,3 +239,34 @@ class ProtocolMacro(BaseProtocol):
             macros += [b""] * (self.macro_count - len(macros))
         macros = macros[:self.macro_count]
         return [self.macro_deserialize(x) for x in macros]
+
+    def get_macro_preview(self, macro_index, max_length=12):
+        """
+        Get a text preview of a macro for display on key labels.
+        Returns the text content if available, otherwise returns "M{index}".
+        """
+        if not hasattr(self, 'macro') or macro_index >= self.macro_count:
+            return "M{}".format(macro_index)
+
+        macros = self.macros_deserialize(self.macro)
+        if macro_index >= len(macros):
+            return "M{}".format(macro_index)
+
+        macro = macros[macro_index]
+        if not macro:
+            return "M{}".format(macro_index)
+
+        # Extract text from ActionText actions
+        text_parts = []
+        for action in macro:
+            if isinstance(action, ActionText) and action.text:
+                text_parts.append(action.text)
+
+        if text_parts:
+            preview = "".join(text_parts)
+            if len(preview) > max_length:
+                preview = preview[:max_length]
+            # Show M{index} above the preview text
+            return "M{}\n{}".format(macro_index, preview)
+
+        return "M{}".format(macro_index)

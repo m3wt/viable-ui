@@ -1089,8 +1089,10 @@ def recreate_keyboard_keycodes(keyboard):
 
     KEYCODES_MACRO.clear()
     for x in range(keyboard.macro_count):
-        lbl = "M{}".format(x)
-        KEYCODES_MACRO.append(Keycode(lbl, lbl))
+        qmk_id = "M{}".format(x)
+        # Try to get macro preview text if available
+        preview = keyboard.get_macro_preview(x) if hasattr(keyboard, 'get_macro_preview') else qmk_id
+        KEYCODES_MACRO.append(Keycode(qmk_id, preview))
 
     for x, kc in enumerate(KEYCODES_MACRO_BASE):
         KEYCODES_MACRO.append(kc)

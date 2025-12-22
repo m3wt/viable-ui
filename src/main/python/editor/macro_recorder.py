@@ -4,11 +4,13 @@ import sys
 from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QWidget, QLabel
 
 from editor.basic_editor import BasicEditor
+from keycodes.keycodes import recreate_keyboard_keycodes
 from macro.macro_action import ActionText, ActionTap, ActionDown, ActionUp
 from macro.macro_action_ui import ui_action
 from macro.macro_key import KeyString, KeyDown, KeyUp, KeyTap
 from macro.macro_optimizer import macro_optimize
 from macro.macro_tab import MacroTab
+from tabbed_keycodes import TabbedKeycodes
 from unlocker import Unlocker
 from util import tr
 from vial_device import VialKeyboard
@@ -178,4 +180,7 @@ class MacroRecorder(BasicEditor):
     def on_save(self):
         Unlocker.unlock(self.device.keyboard)
         self.keyboard.set_macro(self.serialize())
+        # Refresh keycode labels to show updated macro preview text
+        recreate_keyboard_keycodes(self.keyboard)
+        TabbedKeycodes.tray.recreate_keycode_buttons()
         self.on_change()

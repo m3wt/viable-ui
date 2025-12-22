@@ -234,5 +234,21 @@ class KeycodeDisplay:
                 widget.setStyleSheet("QPushButton {color: rgb%s;}" % str(highlight_color))
             else:
                 label = widget.keycode.label
-                widget.setStyleSheet("QPushButton {}")
+                # Use smaller font for macro buttons with preview text (has newline)
+                if qmk_id.startswith("M") and qmk_id[1:].isdigit() and '\n' in label:
+                    # Lock in current size to prevent shrinking or growing
+                    widget.setFixedSize(widget.sizeHint())
+                    # Use HTML: M# centered, preview left-aligned with small gap, no wrap
+                    parts = label.split('\n', 1)
+                    preview = parts[1] if len(parts) > 1 else ""
+                    html_label = '<div style="font-size:6pt"><center>{}</center><div style="margin-top:2px;white-space:nowrap" align="left">{}</div></div>'.format(
+                        parts[0], preview)
+                    widget.setWordWrap(True)
+                    widget.setText(html_label)
+                    continue
+                else:
+                    widget.setMinimumSize(0, 0)
+                    widget.setMaximumSize(16777215, 16777215)  # Reset to default max
+                    widget.setStyleSheet("QPushButton {}")
+                    widget.setWordWrap(False)
             widget.setText(label.replace("&", "&&"))

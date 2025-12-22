@@ -88,12 +88,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
         self.reload_dynamic()
 
+        # Load macro data early so preview text is available for keycode labels
+        self.reload_macros_late()
+
         # based on the number of macros, tapdance, etc, this will generate global keycode arrays
         recreate_keyboard_keycodes(self)
 
         # at this stage we have correct keycode info and can reload everything that depends on keycodes
         self.reload_keymap()
-        self.reload_macros_late()
         self.reload_tap_dance()
         self.reload_combo()
         self.reload_key_override()
