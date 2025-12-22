@@ -8,6 +8,9 @@ from protocol.constants import (SVAL_VIA_PREFIX, SVAL_GET_PROTOCOL_VERSION,
                                  SVAL_SET_SETTINGS, SVAL_GET_DPI_LEVELS,
                                  SVAL_GET_MH_TIMERS)
 
+# Minimum supported Svalboard protocol version
+SVAL_MIN_PROTOCOL_VERSION = 5
+
 
 class ProtocolSvalboard(BaseProtocol):
     """Protocol mixin for Svalboard-specific features"""
@@ -43,8 +46,10 @@ class ProtocolSvalboard(BaseProtocol):
             )
             # Response: 'sval' + 4-byte version (little-endian)
             if data[0:4] == b'sval':
-                self.is_svalboard = True
                 self.sval_protocol_version = struct.unpack("<I", data[4:8])[0]
+                if self.sval_protocol_version < SVAL_MIN_PROTOCOL_VERSION:
+                    return  # Unsupported old firmware
+                self.is_svalboard = True
             else:
                 return
         except Exception:
