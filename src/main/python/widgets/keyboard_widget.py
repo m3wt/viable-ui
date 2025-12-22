@@ -555,7 +555,9 @@ class KeyboardWidget(QWidget):
         self.enabled = val
 
     def set_scale(self, scale):
-        self.scale = scale
+        if self.scale != scale:
+            self.scale = scale
+            self.update_layout()
 
     def get_scale(self):
         return self.scale

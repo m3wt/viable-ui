@@ -121,7 +121,9 @@ class KeymapEditor(BasicEditor):
             new_scale = min(3.0, current + 0.1)
         self.container.set_scale(new_scale)
         self.refresh_layer_display()
-        self._update_container_size()
+        # Just resize container without auto-fitting (user is manually adjusting)
+        self.container.resize(self.container.sizeHint())
+        self.container.update()
 
     def rebuild(self, device):
         super().rebuild(device)
@@ -150,39 +152,43 @@ class KeymapEditor(BasicEditor):
         self.container.setEnabled(self.valid())
 
     def _update_container_size(self):
-        """Update container size after layout is processed, auto-fitting to available space"""
-        self._auto_fit_keyboard()
+        """Update container size after layout is processed"""
         self.container.resize(self.container.sizeHint())
-        self.container.update()  # Force repaint after resize
+        self.container.update()
+        # Delay auto-fit to ensure viewport is properly sized
+        QTimer.singleShot(100, self._auto_fit_keyboard)
 
     def _auto_fit_keyboard(self):
         """Auto-scale keyboard to fit in scroll area without scrolling"""
-        # Get available space in scroll area
         available_width = self.scroll_area.viewport().width()
         available_height = self.scroll_area.viewport().height()
 
-        if available_width <= 0 or available_height <= 0:
+        if available_width <= 50 or available_height <= 50:
             return
 
-        # Get keyboard size at scale=1 to calculate required scale
+        # Calculate base dimensions at scale=1
         current_scale = self.container.get_scale()
-        base_width = self.container.width / current_scale if current_scale > 0 else self.container.width
-        base_height = self.container.height / current_scale if current_scale > 0 else self.container.height
+        if current_scale <= 0:
+            current_scale = 1
+
+        # Current dimensions are at current_scale, so base = current / scale
+        base_width = self.container.width / current_scale
+        base_height = self.container.height / current_scale
 
         if base_width <= 0 or base_height <= 0:
             return
 
-        # Calculate scale to fit both dimensions
+        # Calculate scale to fit
         scale_for_width = available_width / base_width
         scale_for_height = available_height / base_height
-        new_scale = min(scale_for_width, scale_for_height)
+        new_scale = min(scale_for_width, scale_for_height) * 0.95  # 5% margin
 
         # Clamp to reasonable range
-        new_scale = max(0.5, min(3.0, new_scale))
+        new_scale = max(0.3, min(3.0, new_scale))
 
-        # Only update if scale changed significantly
         if abs(new_scale - current_scale) > 0.01:
             self.container.set_scale(new_scale)
+            self.container.resize(self.container.sizeHint())
             self.refresh_layer_display()
 
     def valid(self):
