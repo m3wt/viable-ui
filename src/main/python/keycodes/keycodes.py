@@ -21,7 +21,7 @@ class Keycode:
         self.qmk_id_to_keycode[qmk_id] = self
         self.requires_feature = requires_feature
         self.label = label
-        # Qt WASM can't render CJK - fall back to readable names
+        # Qt WASM can't render CJK or subscripts - fall back to readable names
         if sys.platform == "emscripten" and not label.isascii() and qmk_id != "KC_TRNS":
             web_labels = {
                 "KC_KANA": "Kana",
@@ -29,8 +29,16 @@ class Keycode:
                 "KC_MHEN": "Muhen",
                 "KC_LANG1": "Lang1\nKana",
                 "KC_LANG2": "Lang2\nEisu",
+                # Steno number keys
+                "STN_N1": "#1", "STN_N2": "#2", "STN_N3": "#3",
+                "STN_N4": "#4", "STN_N5": "#5", "STN_N6": "#6",
+                "STN_N7": "#7", "STN_N8": "#8", "STN_N9": "#9",
+                # Steno star keys
+                "STN_ST1": "*1", "STN_ST2": "*2", "STN_ST3": "*3", "STN_ST4": "*4",
+                # Steno S keys
+                "STN_S1": "S-1", "STN_S2": "S-2",
             }
-            self.label = web_labels.get(qmk_id, qmk_id.replace("KC_", ""))
+            self.label = web_labels.get(qmk_id, qmk_id.replace("KC_", "").replace("STN_", ""))
         self.tooltip = tooltip
         # whether this keycode requires another sub-keycode
         self.masked = masked
