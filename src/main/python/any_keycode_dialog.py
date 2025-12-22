@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLineEdit, QLabel
+from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLineEdit, QLabel, QSizePolicy
 
 from keycodes.keycodes import Keycode
 from util import tr
@@ -26,10 +26,19 @@ class AnyKeycodeDialog(QDialog):
         self.layout.addWidget(self.buttons)
         self.setLayout(self.layout)
 
+        # Prevent dialog from expanding - critical for Qt WASM
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
         self.value = initial
         self.txt_entry.setText(initial)
         self.txt_entry.selectAll()
         self.on_change()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Force resize to minimum needed size
+        self.adjustSize()
+        self.setFixedSize(self.sizeHint())
 
     def on_change(self):
         text = self.txt_entry.text()
