@@ -457,8 +457,14 @@ class KeyboardWidget(QWidget):
                 # Draw the legend
                 qp.setPen(key.color if key.color else text_pen)
                 # Use smaller font for longer single-line text or macro previews
-                # Macro previews have format "M{n}\n{text}" - center M#, left-align preview
-                is_macro_preview = key.text.startswith("M") and '\n' in key.text
+                # Macro previews have format "M{digit(s)}\n{text}" - center M#, left-align preview
+                is_macro_preview = False
+                if '\n' in key.text:
+                    first_line = key.text.split('\n', 1)[0]
+                    # Must be exactly "M" followed by digits (e.g., "M0", "M12")
+                    is_macro_preview = (first_line.startswith('M') and
+                                        len(first_line) > 1 and
+                                        first_line[1:].isdigit())
                 use_small_font = is_macro_preview or (len(key.text) > 6 and '\n' not in key.text)
                 if use_small_font:
                     qp.setFont(small_font)
