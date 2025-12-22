@@ -265,11 +265,10 @@ class AltRepeatKey(BasicEditor):
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
-        # Vertical layout for entries (they're wide, so stack vertically)
+        # Flow layout for entries to wrap when window is narrow
         self.entries_container = QWidget()
-        self.entries_layout = QVBoxLayout()
+        self.entries_layout = FlowLayout()
         self.entries_layout.setSpacing(8)
-        self.entries_layout.setAlignment(Qt.AlignTop)
         self.entries_container.setLayout(self.entries_layout)
 
         self.scroll.setWidget(self.entries_container)
