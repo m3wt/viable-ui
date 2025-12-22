@@ -456,10 +456,11 @@ class KeyboardWidget(QWidget):
             else:
                 # Draw the legend
                 qp.setPen(key.color if key.color else text_pen)
-                # Use smaller font for longer text (e.g., macro previews)
+                # Use smaller font for longer single-line text or macro previews
                 # Macro previews have format "M{n}\n{text}" - center M#, left-align preview
                 is_macro_preview = key.text.startswith("M") and '\n' in key.text
-                if len(key.text) > 6 or is_macro_preview:
+                use_small_font = is_macro_preview or (len(key.text) > 6 and '\n' not in key.text)
+                if use_small_font:
                     qp.setFont(small_font)
                 else:
                     qp.setFont(default_font)
