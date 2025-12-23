@@ -41,3 +41,10 @@ class DisplayKeyboard(QWidget):
 
     def relabel_buttons(self):
         KeycodeDisplay.relabel_buttons(self.buttons)
+
+    def update_mod_tap_state(self, is_active):
+        """Enable/disable buttons based on mod-tap compatibility"""
+        for btn in self.buttons:
+            if btn.keycode:
+                is_basic = Keycode.is_basic(btn.keycode.qmk_id)
+                btn.setEnabled(not is_active or is_basic)

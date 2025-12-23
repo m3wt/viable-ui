@@ -171,6 +171,7 @@ class ModsBar(QWidget):
     """Compact modifier toggle bar with special keys (KC_NO, KC_TRNS)"""
 
     keycode_changed = pyqtSignal(str)
+    mods_changed = pyqtSignal(bool)  # Emitted when any modifier state changes (bool = has_active_mods)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -264,6 +265,9 @@ class ModsBar(QWidget):
 
     def _toggle_mod(self, mod, checked):
         self.mods[mod] = checked
+        # Emit whenever modifier state changes (affects which keycodes are valid)
+        if mod in ('shift', 'ctrl', 'gui', 'alt'):
+            self.mods_changed.emit(self.has_active_mods())
 
     def wrap_keycode(self, keycode):
         """Wrap a keycode with active modifiers or mod-tap"""
@@ -426,17 +430,24 @@ class AlternativeDisplay(QWidget):
     def has_buttons(self):
         return len(self.buttons) > 0
 
+    def update_mod_tap_state(self, is_active):
+        """Enable/disable buttons based on mod-tap compatibility"""
+        for btn in self.buttons:
+            if btn.keycode:
+                is_basic = Keycode.is_basic(btn.keycode.qmk_id)
+                btn.setEnabled(not is_active or is_basic)
+        if self.kb_display:
+            self.kb_display.update_mod_tap_state(is_active)
+
 
 class Tab(QScrollArea):
 
     keycode_changed = pyqtSignal(str)
 
-    def __init__(self, parent, label, alts, prefix_buttons=None, with_mods_bar=False):
+    def __init__(self, parent, label, alts, prefix_buttons=None):
         super().__init__(parent)
 
         self.label = label
-        self.mods_bar = None
-        self.inner_scroll = None  # Only used when mods_bar is present
 
         self.scroll_content = QWidget()
         self.layout = QVBoxLayout()
@@ -445,50 +456,16 @@ class Tab(QScrollArea):
         self.alternatives = []
         for kb, keys in alts:
             alt = AlternativeDisplay(kb, keys, prefix_buttons)
-            alt.keycode_changed.connect(self._on_keycode_changed)
+            alt.keycode_changed.connect(self.keycode_changed)
             self.layout.addWidget(alt)
             self.alternatives.append(alt)
 
         self.scroll_content.setLayout(self.layout)
 
-        if with_mods_bar:
-            # With mods bar: container with mods bar at top, scrollable content below
-            self.mods_bar = ModsBar()
-            self.mods_bar.keycode_changed.connect(self.keycode_changed)
-
-            self.inner_scroll = QScrollArea()
-            self.inner_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.inner_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            self.inner_scroll.setWidgetResizable(True)
-            self.inner_scroll.setWidget(self.scroll_content)
-            self.inner_scroll.setFrameShape(QFrame.NoFrame)
-
-            container_layout = QVBoxLayout()
-            container_layout.setContentsMargins(0, 0, 0, 0)
-            container_layout.setSpacing(0)
-            container_layout.addWidget(self.mods_bar)
-            container_layout.addWidget(self.inner_scroll, 1)
-
-            container = QWidget()
-            container.setLayout(container_layout)
-
-            self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            self.setWidgetResizable(True)
-            self.setFrameShape(QFrame.NoFrame)
-            self.setWidget(container)
-        else:
-            # Without mods bar: simple scroll area (original behavior)
-            self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            self.setWidgetResizable(True)
-            self.setWidget(self.scroll_content)
-
-    def _on_keycode_changed(self, keycode):
-        """Handle keycode changes, wrapping with mods if active"""
-        if self.mods_bar and self.mods_bar.has_active_mods():
-            keycode = self.mods_bar.wrap_keycode(keycode)
-        self.keycode_changed.emit(keycode)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setWidgetResizable(True)
+        self.setWidget(self.scroll_content)
 
     def recreate_buttons(self, keycode_filter):
         for alt in self.alternatives:
@@ -505,16 +482,18 @@ class Tab(QScrollArea):
                 return True
         return False
 
+    def update_mod_tap_state(self, is_active):
+        """Enable/disable buttons based on mod-tap compatibility"""
+        for alt in self.alternatives:
+            alt.update_mod_tap_state(is_active)
+
     def select_alternative(self):
         # hide everything first
         for alt in self.alternatives:
             alt.hide()
 
-        scroll_area = self.inner_scroll if self.inner_scroll else self
-        scroll_width = scroll_area.width() - scroll_area.verticalScrollBar().width()
-        scroll_height = scroll_area.height()
-        if self.mods_bar:
-            scroll_height -= self.mods_bar.height()
+        scroll_width = self.width() - self.verticalScrollBar().width()
+        scroll_height = self.height()
 
         # Find first alternative that fits both width and height
         shown = False
@@ -707,6 +686,13 @@ class StenoTab(QScrollArea):
     def has_buttons(self):
         return len(self.buttons) > 0
 
+    def update_mod_tap_state(self, is_active):
+        """Enable/disable buttons based on mod-tap compatibility"""
+        for btn in self.buttons:
+            if btn.keycode:
+                is_basic = Keycode.is_basic(btn.keycode.qmk_id)
+                btn.setEnabled(not is_active or is_basic)
+
     def required_width(self):
         return 0
 
@@ -806,6 +792,13 @@ class SectionedTab(QScrollArea):
     def has_buttons(self):
         return len(self.buttons) > 0
 
+    def update_mod_tap_state(self, is_active):
+        """Enable/disable buttons based on mod-tap compatibility"""
+        for btn in self.buttons:
+            if btn.keycode:
+                is_basic = Keycode.is_basic(btn.keycode.qmk_id)
+                btn.setEnabled(not is_active or is_basic)
+
     def select_alternative(self):
         pass  # No alternatives in sectioned tab
 
@@ -896,6 +889,13 @@ class HeaderedSectionedTab(QScrollArea):
     def has_buttons(self):
         return len(self.buttons) > 0
 
+    def update_mod_tap_state(self, is_active):
+        """Enable/disable buttons based on mod-tap compatibility"""
+        for btn in self.buttons:
+            if btn.keycode:
+                is_basic = Keycode.is_basic(btn.keycode.qmk_id)
+                btn.setEnabled(not is_active or is_basic)
+
     def select_alternative(self):
         pass
 
@@ -911,7 +911,7 @@ def keycode_filter_masked(kc):
     return Keycode.is_basic(kc)
 
 
-class FilteredTabbedKeycodes(QTabWidget):
+class FilteredTabbedKeycodes(QWidget):
 
     keycode_changed = pyqtSignal(str)
     anykey = pyqtSignal()
@@ -921,13 +921,27 @@ class FilteredTabbedKeycodes(QTabWidget):
 
         self.keycode_filter = keycode_filter
 
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Global ModsBar at top
+        self.mods_bar = ModsBar()
+        self.mods_bar.keycode_changed.connect(self._on_mods_bar_keycode)
+        self.mods_bar.mods_changed.connect(self._on_mods_changed)
+        layout.addWidget(self.mods_bar)
+
+        # Tab widget below
+        self.tab_widget = QTabWidget()
+        layout.addWidget(self.tab_widget)
+
         self.tabs = [
             Tab(self, "Basic", [
                 (ansi_100, KEYCODES_SHIFTED + KEYCODES_ISO),
                 (ansi_80, KEYCODES_BASIC_NUMPAD + KEYCODES_SHIFTED + KEYCODES_ISO),
                 (ansi_70, KEYCODES_BASIC_NUMPAD + KEYCODES_BASIC_NAV + KEYCODES_SHIFTED + KEYCODES_ISO),
                 (None, KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_ISO),
-            ], prefix_buttons=[(" ", "KC_NO"), ("▽", "KC_TRNS")], with_mods_bar=True),
+            ], prefix_buttons=[(" ", "KC_NO"), ("▽", "KC_TRNS")]),
             SectionedTab(self, "Layers", get_layer_keycodes_by_section),
             HeaderedSectionedTab(self, "One Shot", get_modifier_keycodes_by_section),
             HeaderedSectionedTab(self, "App, Media and Mouse", get_media_keycodes_by_section),
@@ -943,28 +957,43 @@ class FilteredTabbedKeycodes(QTabWidget):
         ]
 
         for tab in self.tabs:
-            tab.keycode_changed.connect(self.on_keycode_changed)
+            tab.keycode_changed.connect(self._on_tab_keycode_changed)
 
         self.recreate_keycode_buttons()
         KeycodeDisplay.notify_keymap_override(self)
 
-    def on_keycode_changed(self, code):
+    def _on_mods_bar_keycode(self, code):
+        """Handle keycodes from ModsBar (KC_NO, KC_TRNS, Any)"""
         if code == "Any":
             self.anykey.emit()
         else:
+            # KC_NO and KC_TRNS can be wrapped with mods
+            if self.mods_bar.has_active_mods():
+                code = self.mods_bar.wrap_keycode(code)
             self.keycode_changed.emit(Keycode.normalize(code))
 
+    def _on_tab_keycode_changed(self, code):
+        """Handle keycodes from tabs, wrapping with mods if active"""
+        if self.mods_bar.has_active_mods():
+            code = self.mods_bar.wrap_keycode(code)
+        self.keycode_changed.emit(Keycode.normalize(code))
+
+    def _on_mods_changed(self, has_mods):
+        """Update all tabs when modifier state changes"""
+        for tab in self.tabs:
+            tab.update_mod_tap_state(has_mods)
+
     def recreate_keycode_buttons(self):
-        prev_tab = self.tabText(self.currentIndex()) if self.currentIndex() >= 0 else ""
-        while self.count() > 0:
-            self.removeTab(0)
+        prev_tab = self.tab_widget.tabText(self.tab_widget.currentIndex()) if self.tab_widget.currentIndex() >= 0 else ""
+        while self.tab_widget.count() > 0:
+            self.tab_widget.removeTab(0)
 
         for tab in self.tabs:
             tab.recreate_buttons(self.keycode_filter)
             if tab.has_buttons():
-                self.addTab(tab, tr("TabbedKeycodes", tab.label))
+                self.tab_widget.addTab(tab, tr("TabbedKeycodes", tab.label))
                 if tab.label == prev_tab:
-                    self.setCurrentIndex(self.count() - 1)
+                    self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
 
     def on_keymap_override(self):
         for tab in self.tabs:
@@ -976,9 +1005,9 @@ class FilteredTabbedKeycodes(QTabWidget):
             if tab.label == "User" or tab.label == "Svalboard":
                 tab.label = label
                 # Update the visible tab text if it's currently shown
-                for tab_idx in range(self.count()):
-                    if self.widget(tab_idx) == tab:
-                        self.setTabText(tab_idx, tr("TabbedKeycodes", label))
+                for tab_idx in range(self.tab_widget.count()):
+                    if self.tab_widget.widget(tab_idx) == tab:
+                        self.tab_widget.setTabText(tab_idx, tr("TabbedKeycodes", label))
                         break
                 break
 
