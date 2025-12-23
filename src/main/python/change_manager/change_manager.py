@@ -379,17 +379,23 @@ class ChangeManager(QObject):
     def has_pending_changes(self) -> bool:
         """Return True if there are unsaved changes."""
         state = self._get_state()
-        return bool(state.pending) if state else False
+        # In auto_commit mode, changes are immediately committed - no pending state
+        if not state or state.auto_commit:
+            return False
+        return bool(state.pending)
 
     def is_modified(self, key: Tuple) -> bool:
         """Return True if the given key has a pending change."""
         state = self._get_state()
-        return key in state.pending if state else False
+        # In auto_commit mode, changes are immediately committed - no pending state
+        if not state or state.auto_commit:
+            return False
+        return key in state.pending
 
     def get_pending_value(self, key: Tuple) -> Optional[Any]:
         """Get the pending value for a key, or None if not modified."""
         state = self._get_state()
-        if not state:
+        if not state or state.auto_commit:
             return None
         change = state.pending.get(key)
         if change is not None and hasattr(change, 'new_value'):
@@ -399,7 +405,10 @@ class ChangeManager(QObject):
     def get_modified_keys(self) -> set:
         """Return set of all modified keys."""
         state = self._get_state()
-        return set(state.pending.keys()) if state else set()
+        # In auto_commit mode, changes are immediately committed - no pending state
+        if not state or state.auto_commit:
+            return set()
+        return set(state.pending.keys())
 
     def can_undo(self) -> bool:
         """Return True if undo is available."""

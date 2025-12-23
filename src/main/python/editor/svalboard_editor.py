@@ -184,6 +184,12 @@ class SvalboardEditor(BasicEditor):
         self.axis_scroll_lock.stateChanged.connect(self.on_setting_changed)
         layout.addWidget(self.axis_scroll_lock)
 
+        # Natural scroll (inverts vertical scroll direction)
+        self.natural_scroll = QCheckBox(tr("SvalboardEditor", "Natural scroll"))
+        self.natural_scroll.setStyleSheet("border: 2px solid transparent;")
+        self.natural_scroll.stateChanged.connect(self.on_setting_changed)
+        layout.addWidget(self.natural_scroll)
+
         group.setLayout(layout)
         self.container.addWidget(group)
 
@@ -228,6 +234,11 @@ class SvalboardEditor(BasicEditor):
                 pass
             cm.values_restored.connect(self._on_values_restored)
             cm.saved.connect(self._on_saved)
+            try:
+                cm.auto_commit_changed.disconnect(self._on_auto_commit_changed)
+            except TypeError:
+                pass
+            cm.auto_commit_changed.connect(self._on_auto_commit_changed)
             self._update_layer_visibility()
             self._update_dpi_dropdowns()
             self._update_mh_timeout_dropdown()
@@ -328,6 +339,7 @@ class SvalboardEditor(BasicEditor):
             self.left_scroll.setChecked(settings.get('left_scroll', False))
             self.right_scroll.setChecked(settings.get('right_scroll', False))
             self.axis_scroll_lock.setChecked(settings.get('axis_scroll_lock', False))
+            self.natural_scroll.setChecked(settings.get('natural_scroll', False))
             self.auto_mouse.setChecked(settings.get('auto_mouse', False))
             self.mh_timeout.setCurrentIndex(settings.get('mh_timer_index', 0))
             self.turbo_scan.setCurrentIndex(settings.get('turbo_scan', 0))
@@ -342,6 +354,7 @@ class SvalboardEditor(BasicEditor):
         self.left_scroll.blockSignals(True)
         self.right_scroll.blockSignals(True)
         self.axis_scroll_lock.blockSignals(True)
+        self.natural_scroll.blockSignals(True)
         self.auto_mouse.blockSignals(True)
         self.mh_timeout.blockSignals(True)
         self.turbo_scan.blockSignals(True)
@@ -352,6 +365,7 @@ class SvalboardEditor(BasicEditor):
         self.left_scroll.blockSignals(False)
         self.right_scroll.blockSignals(False)
         self.axis_scroll_lock.blockSignals(False)
+        self.natural_scroll.blockSignals(False)
         self.auto_mouse.blockSignals(False)
         self.mh_timeout.blockSignals(False)
         self.turbo_scan.blockSignals(False)
@@ -410,6 +424,7 @@ class SvalboardEditor(BasicEditor):
         self.pending_settings['left_scroll'] = self.left_scroll.isChecked()
         self.pending_settings['right_scroll'] = self.right_scroll.isChecked()
         self.pending_settings['axis_scroll_lock'] = self.axis_scroll_lock.isChecked()
+        self.pending_settings['natural_scroll'] = self.natural_scroll.isChecked()
         self.pending_settings['auto_mouse'] = self.auto_mouse.isChecked()
         self.pending_settings['mh_timer_index'] = self.mh_timeout.currentIndex()
         self.pending_settings['turbo_scan'] = self.turbo_scan.currentIndex()
@@ -425,7 +440,6 @@ class SvalboardEditor(BasicEditor):
 
     def _update_buttons(self):
         cm = ChangeManager.instance()
-        settings_modified = cm.is_modified(('svalboard_settings',))
 
         # Highlight just the frame around modified layer color+number
         for i in range(len(self.layer_color_widgets)):
@@ -449,6 +463,19 @@ class SvalboardEditor(BasicEditor):
         checkbox_highlight = "border: 2px solid palette(link);"
         checkbox_normal = "border: 2px solid transparent;"
 
+        # In auto_commit mode, no highlighting (changes are immediately committed)
+        cm = ChangeManager.instance()
+        if cm.auto_commit:
+            for widget, is_frame in [
+                (self.left_dpi_frame, True), (self.right_dpi_frame, True),
+                (self.left_scroll, False), (self.right_scroll, False),
+                (self.axis_scroll_lock, False), (self.natural_scroll, False),
+                (self.auto_mouse, False), (self.mh_timeout_frame, True),
+                (self.turbo_scan_frame, True),
+            ]:
+                widget.setStyleSheet(frame_normal if is_frame else checkbox_normal)
+            return
+
         # Map settings keys to (widget_or_frame, is_frame)
         widget_map = {
             'left_dpi_index': (self.left_dpi_frame, True),
@@ -456,6 +483,7 @@ class SvalboardEditor(BasicEditor):
             'left_scroll': (self.left_scroll, False),
             'right_scroll': (self.right_scroll, False),
             'axis_scroll_lock': (self.axis_scroll_lock, False),
+            'natural_scroll': (self.natural_scroll, False),
             'auto_mouse': (self.auto_mouse, False),
             'mh_timer_index': (self.mh_timeout_frame, True),
             'turbo_scan': (self.turbo_scan_frame, True),
@@ -471,6 +499,14 @@ class SvalboardEditor(BasicEditor):
 
     def _on_saved(self):
         """Update committed state after global save."""
+        if self.pending_settings:
+            self.committed_settings = self.pending_settings.copy()
+        self._update_buttons()
+
+    def _on_auto_commit_changed(self, auto_commit):
+        """Update UI when auto_commit mode changes."""
+        # Always sync committed state - when entering push mode changes become committed,
+        # when leaving push mode the device already has current state
         if self.pending_settings:
             self.committed_settings = self.pending_settings.copy()
         self._update_buttons()
@@ -498,6 +534,8 @@ class SvalboardEditor(BasicEditor):
 
         self._block_signals()
 
+        cm = ChangeManager.instance()
+
         # Restore layer colors
         layer_colors = data.get("layer_colors", [])
         if layer_colors and self.pending_layer_colors:
@@ -506,7 +544,15 @@ class SvalboardEditor(BasicEditor):
                     h = color_data.get("h", 0)
                     s = color_data.get("s", 0)
                     v = color_data.get("v", 0)
-                    self.pending_layer_colors[i] = (h, s, v)
+                    new_hsv = (h, s, v)
+                    old_hsv = self.pending_layer_colors[i]
+
+                    if old_hsv != new_hsv:
+                        # Register change with ChangeManager
+                        change = SvalboardLayerColorChange(i, old_hsv, new_hsv)
+                        cm.add_change(change)
+                        self.pending_layer_colors[i] = new_hsv
+                        self.keyboard.sval_layer_colors[i] = new_hsv
 
                     # Update widget display
                     qt_hue = int(h * 359 / 255) if h > 0 else 0
@@ -518,16 +564,32 @@ class SvalboardEditor(BasicEditor):
         # Restore settings
         settings = data.get("settings", {})
         if settings and self.pending_settings:
+            old_settings = self.pending_settings.copy()
             self.pending_settings.update(settings)
+
+            if old_settings != self.pending_settings:
+                # Register change with ChangeManager
+                new_settings = self.pending_settings.copy()
+                change = SvalboardSettingsChange(old_settings, new_settings)
+                cm.add_change(change)
+                self.keyboard.sval_settings = new_settings
 
             self.left_dpi.setCurrentIndex(settings.get('left_dpi_index', 0))
             self.right_dpi.setCurrentIndex(settings.get('right_dpi_index', 0))
             self.left_scroll.setChecked(settings.get('left_scroll', False))
             self.right_scroll.setChecked(settings.get('right_scroll', False))
             self.axis_scroll_lock.setChecked(settings.get('axis_scroll_lock', False))
+            self.natural_scroll.setChecked(settings.get('natural_scroll', False))
             self.auto_mouse.setChecked(settings.get('auto_mouse', False))
             self.mh_timeout.setCurrentIndex(settings.get('mh_timer_index', 0))
             self.turbo_scan.setCurrentIndex(settings.get('turbo_scan', 0))
 
         self._unblock_signals()
+
+        # Push changes to firmware immediately and clear pending state
+        if cm.has_pending_changes():
+            cm.save()
+
+        # Update committed state to match (no pending changes after load)
+        self.committed_settings = self.pending_settings.copy() if self.pending_settings else {}
         self._update_buttons()

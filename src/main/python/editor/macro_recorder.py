@@ -261,11 +261,11 @@ class MacroRecorder(BasicEditor):
 
     def _on_auto_commit_changed(self, auto_commit):
         """Update UI when auto_commit mode changes."""
-        if auto_commit:
-            # Update committed state to current (everything is now committed)
-            self.committed_macro = self.keyboard.macro
-            self._committed_macros_serialized = []
-            macros = self.keyboard.macros_deserialize(self.keyboard.macro)
-            for macro in macros:
-                self._committed_macros_serialized.append(self.keyboard.macro_serialize(macro))
+        # Always sync committed state - when entering push mode changes become committed,
+        # when leaving push mode the device already has current state
+        self.committed_macro = self.keyboard.macro
+        self._committed_macros_serialized = []
+        macros = self.keyboard.macros_deserialize(self.keyboard.macro)
+        for macro in macros:
+            self._committed_macros_serialized.append(self.keyboard.macro_serialize(macro))
         self.update_tab_titles()

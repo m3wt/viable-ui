@@ -303,6 +303,8 @@ class MainWindow(QMainWindow):
         except (json.JSONDecodeError, UnicodeDecodeError):
             pass
 
+        # Clear pending changes before loading - file load overwrites everything
+        ChangeManager.instance().clear()
         # Standard .vil layout
         self.keymap_editor.restore_layout(layout)
         self.rebuild()
@@ -321,6 +323,8 @@ class MainWindow(QMainWindow):
             if dialog.exec_() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "rb") as inf:
                     data = inf.read()
+                # Clear pending changes before loading - file load overwrites everything
+                ChangeManager.instance().clear()
                 self.keymap_editor.restore_layout(data)
                 self.rebuild()
 
@@ -400,6 +404,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "", "Invalid Svalboard profile format.")
             return
 
+        # Clear pending changes before loading - don't keep state unrelated to loaded file
+        ChangeManager.instance().clear()
+
         # Check keyboard UID matches
         vil_data = profile.get("vil", {})
         if vil_data.get("uid") != self.keymap_editor.keyboard.keyboard_id:
@@ -420,6 +427,9 @@ class MainWindow(QMainWindow):
         svalboard_data = profile.get("svalboard", {})
         if svalboard_data:
             self.svalboard_editor.restore_state(svalboard_data)
+
+        # Clear undo/redo stacks - load is a fresh start
+        ChangeManager.instance().clear()
 
         self.rebuild()
 

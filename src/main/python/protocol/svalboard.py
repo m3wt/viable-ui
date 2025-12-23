@@ -132,6 +132,7 @@ class ProtocolSvalboard(BaseProtocol):
             'auto_mouse': bool(data[5]),
             'mh_timer_index': data[6],
             'turbo_scan': data[7],
+            'natural_scroll': bool(data[9]),
         }
         self.sval_turbo_scan_limit = data[8]
 
@@ -161,7 +162,7 @@ class ProtocolSvalboard(BaseProtocol):
         """Set all settings"""
         self.usb_send(
             self.dev,
-            struct.pack("BBBBBBBBBB", SVAL_VIA_PREFIX, SVAL_SET_SETTINGS,
+            struct.pack("BBBBBBBBBBB", SVAL_VIA_PREFIX, SVAL_SET_SETTINGS,
                         settings['left_dpi_index'],
                         settings['right_dpi_index'],
                         int(settings['left_scroll']),
@@ -169,7 +170,8 @@ class ProtocolSvalboard(BaseProtocol):
                         int(settings['axis_scroll_lock']),
                         int(settings['auto_mouse']),
                         settings['mh_timer_index'],
-                        settings['turbo_scan']),
+                        settings['turbo_scan'],
+                        int(settings['natural_scroll'])),
             retries=20
         )
         self.sval_settings = settings.copy()
@@ -178,7 +180,7 @@ class ProtocolSvalboard(BaseProtocol):
         """Send settings to the device (used by ChangeManager)."""
         self.usb_send(
             self.dev,
-            struct.pack("BBBBBBBBBB", SVAL_VIA_PREFIX, SVAL_SET_SETTINGS,
+            struct.pack("BBBBBBBBBBB", SVAL_VIA_PREFIX, SVAL_SET_SETTINGS,
                         settings['left_dpi_index'],
                         settings['right_dpi_index'],
                         int(settings['left_scroll']),
@@ -186,7 +188,8 @@ class ProtocolSvalboard(BaseProtocol):
                         int(settings['axis_scroll_lock']),
                         int(settings['auto_mouse']),
                         settings['mh_timer_index'],
-                        settings['turbo_scan']),
+                        settings['turbo_scan'],
+                        int(settings['natural_scroll'])),
             retries=20
         )
         self.sval_settings = settings.copy()

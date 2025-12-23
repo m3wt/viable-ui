@@ -324,9 +324,9 @@ class QmkSettings(BasicEditor):
 
     def _on_auto_commit_changed(self, auto_commit):
         """Update UI when auto_commit mode changes."""
-        if auto_commit:
-            # Update committed state to current (everything is now committed)
-            self.committed_settings = dict(self.prepare_settings())
+        # Always sync committed state - when entering push mode changes become committed,
+        # when leaving push mode the device already has current state
+        self.committed_settings = dict(self.prepare_settings())
         self._update_ui_state()
 
     def prepare_settings(self):
