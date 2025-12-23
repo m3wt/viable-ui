@@ -166,23 +166,44 @@ class ProtocolMacro(BaseProtocol):
         self.reload_macros_late()
 
     def set_macro(self, data):
+        """Set macro data, only writing chunks that have changed."""
         if len(data) > self.macro_memory:
             raise RuntimeError("the macro is too big: got {} max {}".format(len(data), self.macro_memory))
 
+        old_data = self.macro if hasattr(self, 'macro') else b''
+        # Pad old data to same length for comparison
+        if len(old_data) < len(data):
+            old_data = old_data + b'\x00' * (len(data) - len(old_data))
+
         for x, chunk in enumerate(chunks(data, BUFFER_FETCH_CHUNK)):
             off = x * BUFFER_FETCH_CHUNK
-            self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
-                          retries=20)
+            # Compare with corresponding chunk in old data
+            old_chunk = old_data[off:off + len(chunk)]
+            if chunk != old_chunk:
+                self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
+                              retries=20)
         self.macro = data
 
     def _commit_macro(self, data):
-        """Send macro data to the device (used by ChangeManager)."""
+        """Send macro data to the device (used by ChangeManager).
+
+        Only writes chunks that have changed to reduce flash wear.
+        """
         if len(data) > self.macro_memory:
             return False
+
+        old_data = self.macro if hasattr(self, 'macro') else b''
+        # Pad old data to same length for comparison
+        if len(old_data) < len(data):
+            old_data = old_data + b'\x00' * (len(data) - len(old_data))
+
         for x, chunk in enumerate(chunks(data, BUFFER_FETCH_CHUNK)):
             off = x * BUFFER_FETCH_CHUNK
-            self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
-                          retries=20)
+            # Compare with corresponding chunk in old data
+            old_chunk = old_data[off:off + len(chunk)]
+            if chunk != old_chunk:
+                self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
+                              retries=20)
         self.macro = data
         return True
 
