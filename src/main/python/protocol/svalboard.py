@@ -6,7 +6,7 @@ from protocol.constants import (SVAL_VIA_PREFIX, SVAL_GET_PROTOCOL_VERSION,
                                  SVAL_GET_LAYER_HSV, SVAL_SET_LAYER_HSV,
                                  SVAL_GET_LAYER_COUNT, SVAL_GET_SETTINGS,
                                  SVAL_SET_SETTINGS, SVAL_GET_DPI_LEVELS,
-                                 SVAL_GET_MH_TIMERS)
+                                 SVAL_GET_MH_TIMERS, SVAL_GET_CURRENT_LAYER)
 
 # Minimum supported Svalboard protocol version
 SVAL_MIN_PROTOCOL_VERSION = 5
@@ -201,3 +201,17 @@ class ProtocolSvalboard(BaseProtocol):
         """Reload just layer colors"""
         if self.is_svalboard:
             self._load_layer_colors()
+
+    def sval_get_current_layer(self):
+        """Get the currently active layer from the keyboard"""
+        if not self.is_svalboard:
+            return None
+        try:
+            data = self.usb_send(
+                self.dev,
+                struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_CURRENT_LAYER),
+                retries=5
+            )
+            return data[0]
+        except Exception:
+            return None

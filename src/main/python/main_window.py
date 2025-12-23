@@ -4,9 +4,9 @@ import platform
 from json import JSONDecodeError
 
 from PyQt5.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, QT_VERSION_STR
-from PyQt5.QtGui import QPalette
+from PyQt5.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor, QFont
 from PyQt5.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, QAction, qApp, \
-    QFileDialog, QDialog, QTabWidget, QActionGroup, QMessageBox, QLabel, QApplication
+    QFileDialog, QDialog, QTabWidget, QActionGroup, QMessageBox, QLabel, QApplication, QSystemTrayIcon
 
 import json
 import os
@@ -146,6 +146,18 @@ class MainWindow(QMainWindow):
 
         # Connect to ChangeManager to navigate to affected editor on undo/redo
         ChangeManager.instance().values_restored.connect(self._on_values_restored)
+
+        # System tray icon for layer indicator (not on web)
+        self.tray_icon = None
+        self.tray_layer_icons = {}
+        self.tray_current_layer = -1
+        if sys.platform != "emscripten" and QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray_icon = QSystemTrayIcon(self)
+            self._init_layer_icons()
+            # Poll for layer changes every 200ms
+            self.layer_poll_timer = QTimer()
+            self.layer_poll_timer.timeout.connect(self._poll_layer)
+            self.layer_poll_timer.start(200)
 
         # cache for via definition files
         self.cache_path = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
@@ -494,6 +506,11 @@ class MainWindow(QMainWindow):
         # Update User tab label to "Svalboard" when Svalboard is connected
         TabbedKeycodes.update_user_tab_label(is_svalboard)
 
+        # Update layer icons from keyboard colors (Svalboard or defaults)
+        if self.tray_icon is not None:
+            self._update_layer_icons_from_keyboard()
+            self.tray_current_layer = -1  # Force icon update on next poll
+
     def refresh_tabs(self):
         self.tabs.clear()
         for container, lbl in self.editors:
@@ -721,6 +738,93 @@ class MainWindow(QMainWindow):
                                 self.keymap_editor.switch_layer(layer)
                         return
 
+    # Default layer colors (HSV) for non-Svalboard keyboards
+    DEFAULT_LAYER_COLORS = [
+        (85, 255, 255),   # Green
+        (21, 255, 255),   # Orange
+        (149, 255, 255),  # Azure
+        (11, 176, 255),   # Coral
+        (43, 255, 255),   # Yellow
+        (128, 255, 128),  # Teal
+        (0, 255, 255),    # Red
+        (0, 255, 255),    # Red
+        (234, 255, 255),  # Pink
+        (191, 255, 128),  # Purple
+        (11, 176, 255),   # Coral
+        (106, 255, 255),  # Spring Green
+        (128, 255, 128),  # Teal
+        (128, 255, 255),  # Turquoise
+        (43, 255, 255),   # Yellow
+        (213, 255, 255),  # Magenta
+    ]
+
+    def _init_layer_icons(self):
+        """Initialize default layer icons using default colors"""
+        for layer in range(16):
+            h, s, v = self.DEFAULT_LAYER_COLORS[layer]
+            self.tray_layer_icons[layer] = self._create_layer_icon(layer, h, s, v)
+
+    def _create_layer_icon(self, layer, h, s, v):
+        """Create a 32x32 icon with layer number on colored background"""
+        pixmap = QPixmap(32, 32)
+        # Convert HSV to RGB
+        color = QColor.fromHsv(h, s, v)
+        pixmap.fill(color)
+
+        painter = QPainter(pixmap)
+        # Use contrasting text color
+        brightness = (color.red() * 299 + color.green() * 587 + color.blue() * 114) / 1000
+        text_color = Qt.black if brightness > 128 else Qt.white
+        painter.setPen(text_color)
+        font = QFont()
+        font.setPixelSize(20)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(pixmap.rect(), Qt.AlignCenter, str(layer))
+        painter.end()
+
+        return QIcon(pixmap)
+
+    def _update_layer_icons_from_keyboard(self):
+        """Update layer icons using colors from connected keyboard"""
+        if not isinstance(self.autorefresh.current_device, VialKeyboard):
+            return
+        keyboard = self.autorefresh.current_device.keyboard
+        if hasattr(keyboard, 'sval_layer_colors') and keyboard.sval_layer_colors:
+            for layer, (h, s, v) in enumerate(keyboard.sval_layer_colors):
+                self.tray_layer_icons[layer] = self._create_layer_icon(layer, h, s, v)
+
+    def _poll_layer(self):
+        """Poll the keyboard for current layer and update tray icon"""
+        if self.tray_icon is None:
+            return
+
+        if not isinstance(self.autorefresh.current_device, VialKeyboard):
+            # No keyboard connected - hide tray icon
+            if self.tray_icon.isVisible():
+                self.tray_icon.hide()
+            self.tray_current_layer = -1
+            return
+
+        keyboard = self.autorefresh.current_device.keyboard
+        if not hasattr(keyboard, 'sval_get_current_layer'):
+            # Keyboard doesn't support layer query
+            if self.tray_icon.isVisible():
+                self.tray_icon.hide()
+            return
+
+        layer = keyboard.sval_get_current_layer()
+        if layer is None:
+            return
+
+        if layer != self.tray_current_layer:
+            self.tray_current_layer = layer
+            if layer in self.tray_layer_icons:
+                self.tray_icon.setIcon(self.tray_layer_icons[layer])
+                self.tray_icon.setToolTip("Layer {}".format(layer))
+            if not self.tray_icon.isVisible():
+                self.tray_icon.show()
+
     def closeEvent(self, e):
         # Check for unsaved changes before closing
         cm = ChangeManager.instance()
@@ -733,6 +837,10 @@ class MainWindow(QMainWindow):
             if ret != QMessageBox.Yes:
                 e.ignore()
                 return
+
+        # Hide tray icon on close
+        if self.tray_icon is not None:
+            self.tray_icon.hide()
 
         self.settings.setValue("size", self.size())
         self.settings.setValue("pos", self.pos())
