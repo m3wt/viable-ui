@@ -4,8 +4,9 @@ import platform
 from json import JSONDecodeError
 
 from PyQt5.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, QT_VERSION_STR
+from PyQt5.QtGui import QPalette
 from PyQt5.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, QAction, qApp, \
-    QFileDialog, QDialog, QTabWidget, QActionGroup, QMessageBox, QLabel
+    QFileDialog, QDialog, QTabWidget, QActionGroup, QMessageBox, QLabel, QApplication
 
 import json
 import os
@@ -13,6 +14,7 @@ import sys
 
 from about_keyboard import AboutKeyboard
 from autorefresh.autorefresh import Autorefresh
+from change_manager import ChangeManager
 from editor.alt_repeat_key import AltRepeatKey
 from editor.combos import Combos
 from constants import WINDOW_WIDTH, WINDOW_HEIGHT
@@ -71,10 +73,16 @@ class MainWindow(QMainWindow):
         self.btn_refresh_devices.setText(tr("MainWindow", "Refresh"))
         self.btn_refresh_devices.clicked.connect(self.on_click_refresh)
 
+        # Import here to avoid circular imports
+        from widgets.change_controls import ChangeControls
+        self.change_controls = ChangeControls()
+
         layout_combobox = QHBoxLayout()
         layout_combobox.addWidget(self.combobox_devices)
         if sys.platform != "emscripten":
             layout_combobox.addWidget(self.btn_refresh_devices)
+        layout_combobox.addSpacing(20)
+        layout_combobox.addWidget(self.change_controls)
 
         self.layout_editor = LayoutEditor()
         self.keymap_editor = KeymapEditor(self.layout_editor)
@@ -104,6 +112,10 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self.on_tab_changed)
         self.refresh_tabs()
 
+        # Connect to ChangeManager to highlight tabs with pending changes
+        cm = ChangeManager.instance()
+        cm.changed.connect(self._update_tab_colors)
+
         no_devices = 'No devices detected. Connect a Vial-compatible device and press "Refresh"<br>' \
                      'or select "File" → "Download VIA definitions" in order to enable support for VIA keyboards.'
         if sys.platform.startswith("linux"):
@@ -131,6 +143,9 @@ class MainWindow(QMainWindow):
 
         self.autorefresh = Autorefresh()
         self.autorefresh.devices_updated.connect(self.on_devices_updated)
+
+        # Connect to ChangeManager to navigate to affected editor on undo/redo
+        ChangeManager.instance().values_restored.connect(self._on_values_restored)
 
         # cache for via definition files
         self.cache_path = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
@@ -160,7 +175,7 @@ class MainWindow(QMainWindow):
         layout_load_act.triggered.connect(self.on_layout_load)
 
         layout_save_act = QAction(tr("MenuFile", "Save current layout..."), self)
-        layout_save_act.setShortcut("Ctrl+S")
+        layout_save_act.setShortcut("Ctrl+Alt+S")
         layout_save_act.triggered.connect(self.on_layout_save)
 
         sideload_json_act = QAction(tr("MenuFile", "Sideload VIA JSON..."), self)
@@ -421,17 +436,32 @@ class MainWindow(QMainWindow):
             self.on_device_selected()
 
     def on_device_selected(self):
+        # Check for unsaved changes before switching devices
+        cm = ChangeManager.instance()
+        if cm.has_pending_changes():
+            ret = QMessageBox.question(
+                self, "",
+                tr("MainWindow", "You have unsaved changes. Discard them?"),
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if ret != QMessageBox.Yes:
+                return
+
         try:
             self.autorefresh.select_device(self.combobox_devices.currentIndex())
         except ProtocolError:
             QMessageBox.warning(self, "", "Unsupported protocol version!\n"
                                           "Please download latest Vial from https://get.vial.today/")
 
+        # Set keyboard on ChangeManager
         if isinstance(self.autorefresh.current_device, VialKeyboard):
+            cm.set_keyboard(self.autorefresh.current_device.keyboard)
             keyboard_id = self.autorefresh.current_device.keyboard.keyboard_id
             if (keyboard_id in EXAMPLE_KEYBOARDS) or ((keyboard_id & 0xFFFFFFFFFFFFFF) == EXAMPLE_KEYBOARD_PREFIX):
                 QMessageBox.warning(self, "", "An example keyboard UID was detected.\n"
                                               "Please change your keyboard UID to be unique before you ship!")
+        else:
+            cm.set_keyboard(None)
 
         self.rebuild()
         self.refresh_tabs()
@@ -483,6 +513,45 @@ class MainWindow(QMainWindow):
             # For Svalboard with --matrix-test, automatically select 2S layout
             if self.initial_tab == "Matrix tester" and self.svalboard_editor.valid():
                 self.layout_editor.set_option_by_name("2S")
+
+    def _update_tab_colors(self):
+        """Update tab text colors based on which editors have pending changes."""
+        cm = ChangeManager.instance()
+        state = cm._get_state()
+        if state is None:
+            return
+
+        # Map change key prefixes to editor labels
+        editor_prefixes = {
+            'Keymap': ('keymap', 'encoder'),
+            'Macros': ('macro',),
+            'Tap Dance': ('tap_dance',),
+            'Combos': ('combo',),
+            'Key Overrides': ('key_override',),
+            'Alt Repeat Key': ('alt_repeat_key',),
+            'QMK Settings': ('qmk_setting',),
+            'Svalboard': ('svalboard_settings', 'svalboard_layer_color'),
+        }
+
+        # Find which editors have changes
+        editors_with_changes = set()
+        for key in state.pending.keys():
+            prefix = key[0]
+            for editor_label, prefixes in editor_prefixes.items():
+                if prefix in prefixes:
+                    editors_with_changes.add(editor_label)
+                    break
+
+        # Update tab colors
+        link_color = QApplication.palette().color(QPalette.Link)
+        default_color = QApplication.palette().color(QPalette.WindowText)
+
+        for i in range(self.tabs.count()):
+            tab_text = self.tabs.tabText(i)
+            if tab_text in editors_with_changes:
+                self.tabs.tabBar().setTabTextColor(i, link_color)
+            else:
+                self.tabs.tabBar().setTabTextColor(i, default_color)
 
     def load_via_stack_json(self):
         from urllib.request import urlopen
@@ -617,7 +686,54 @@ class MainWindow(QMainWindow):
                     self.macro_recorder.tabs.setCurrentIndex(macro_index)
                 break
 
+    def _on_values_restored(self, affected_keys):
+        """Navigate to the appropriate editor when undo/redo restores values."""
+        if not affected_keys:
+            return
+
+        # Map change types to tab names
+        type_to_tab = {
+            'keymap': 'Keymap',
+            'encoder': 'Keymap',
+            'macro': 'Macros',
+            'tap_dance': 'Tap Dance',
+            'combo': 'Combos',
+            'key_override': 'Key Overrides',
+            'alt_repeat_key': 'Alt Repeat Key',
+            'qmk_setting': 'QMK Settings',
+            'svalboard_settings': 'Svalboard',
+            'svalboard_layer_color': 'Svalboard',
+        }
+
+        # Find the first affected change type and switch to that tab
+        for key in affected_keys:
+            change_type = key[0]
+            tab_name = type_to_tab.get(change_type)
+            if tab_name:
+                for i in range(self.tabs.count()):
+                    if self.tabs.tabText(i) == tab_name:
+                        self.tabs.setCurrentIndex(i)
+
+                        # For keymap/encoder changes, switch to the affected layer
+                        if change_type in ('keymap', 'encoder') and len(key) >= 2:
+                            layer = key[1]
+                            if layer != self.keymap_editor.current_layer:
+                                self.keymap_editor.switch_layer(layer)
+                        return
+
     def closeEvent(self, e):
+        # Check for unsaved changes before closing
+        cm = ChangeManager.instance()
+        if cm.has_pending_changes():
+            ret = QMessageBox.question(
+                self, "",
+                tr("MainWindow", "You have unsaved changes. Discard them and close?"),
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if ret != QMessageBox.Yes:
+                e.ignore()
+                return
+
         self.settings.setValue("size", self.size())
         self.settings.setValue("pos", self.pos())
         self.settings.setValue("maximized", self.isMaximized())

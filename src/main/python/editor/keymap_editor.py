@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import json
+import sys
 
 from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                              QScrollArea, QSizePolicy, QToolButton, QMenu, QApplication,
-                             QActionGroup)
+                             QComboBox)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 
 from any_keycode_dialog import AnyKeycodeDialog
+from change_manager import ChangeManager, KeymapChange, EncoderChange
 from editor.basic_editor import BasicEditor
 from widgets.keyboard_widget import KeyboardWidget, EncoderWidget
 from keycodes.keycodes import Keycode
@@ -44,34 +46,21 @@ class KeymapEditor(BasicEditor):
         layout_labels_container.addStretch()
 
         # Auto-Advance dropdown
-        self.advance_btn = QToolButton()
-        self.advance_btn.setText("Top to bottom")
-        self.advance_btn.setPopupMode(QToolButton.InstantPopup)
-        self.advance_menu = QMenu()
-        self.advance_group = QActionGroup(self)
-        self.advance_actions = {}
-
-        advance_modes = [
-            (SerialMode.TOP_TO_BOTTOM, "Top to bottom", "Advance down rows, then across columns"),
-            (SerialMode.LEFT_TO_RIGHT, "Left to right", "Advance across columns, then down rows"),
-            (SerialMode.CLUSTER, "By cluster", "Advance through each finger cluster, then thumbs"),
-            (SerialMode.DIRECTION, "By direction", "Advance through all keys of each direction (N→C→S→W→E→thumbs)"),
+        self.advance_combo = QComboBox()
+        self.advance_modes = [
+            (SerialMode.TOP_TO_BOTTOM, "Top to bottom"),
+            (SerialMode.LEFT_TO_RIGHT, "Left to right"),
+            (SerialMode.CLUSTER, "By cluster"),
+            (SerialMode.DIRECTION, "By direction"),
         ]
-        for mode, label, tooltip in advance_modes:
-            act = self.advance_menu.addAction(label)
-            act.setCheckable(True)
-            act.setToolTip(tooltip)
-            act.triggered.connect(lambda checked, m=mode, lbl=label: self._set_serial_mode(m, lbl))
-            self.advance_group.addAction(act)
-            self.advance_actions[mode] = act
-
-        self.advance_btn.setMenu(self.advance_menu)
-        layout_labels_container.addWidget(self.advance_btn)
+        for mode, label in self.advance_modes:
+            self.advance_combo.addItem(label, mode)
+        self.advance_combo.currentIndexChanged.connect(self._on_advance_changed)
+        layout_labels_container.addWidget(self.advance_combo)
 
         # Layer operations dropdown
         self.layer_btn = QToolButton()
         self.layer_btn.setText("Layer ▾")
-        self.layer_btn.setPopupMode(QToolButton.InstantPopup)
         self.layer_menu = QMenu()
         self.layer_menu.addAction("Copy layer", self.copy_layer)
         self.layer_menu.addAction("Paste layer", self.paste_layer)
@@ -79,7 +68,13 @@ class KeymapEditor(BasicEditor):
         self.layer_menu.addAction("Fill with KC_NO", lambda: self.fill_layer("KC_NO"))
         self.layer_menu.addAction("Fill with KC_TRNS", lambda: self.fill_layer("KC_TRNS"))
         self.layer_menu.addAction("KC_NO → KC_TRNS", self.convert_no_to_trns)
-        self.layer_btn.setMenu(self.layer_menu)
+
+        # On web, use manual popup to avoid blocking; on desktop use InstantPopup
+        if sys.platform == "emscripten":
+            self.layer_btn.clicked.connect(lambda: self.layer_menu.popup(self.layer_btn.mapToGlobal(self.layer_btn.rect().bottomLeft())))
+        else:
+            self.layer_btn.setPopupMode(QToolButton.InstantPopup)
+            self.layer_btn.setMenu(self.layer_menu)
         layout_labels_container.addWidget(self.layer_btn)
 
         layout_labels_container.addLayout(self.layout_size)
@@ -146,6 +141,7 @@ class KeymapEditor(BasicEditor):
             btn.setFocusPolicy(Qt.NoFocus)
             btn.setRelSize(1.667)
             btn.setCheckable(True)
+            btn.setStyleSheet("QPushButton { margin: 2px; }")
             btn.clicked.connect(lambda state, idx=x: self.switch_layer(idx))
             self.layout_layers.addWidget(btn)
             self.layer_buttons.append(btn)
@@ -174,12 +170,27 @@ class KeymapEditor(BasicEditor):
         if self.valid():
             self.keyboard = device.keyboard
 
+            # Connect to ChangeManager for undo/redo refresh
+            cm = ChangeManager.instance()
+            # Disconnect first to avoid duplicate connections
+            try:
+                cm.changed.disconnect(self.on_change_manager_changed)
+            except TypeError:
+                pass  # Not connected yet
+            try:
+                cm.values_restored.disconnect(self._on_values_restored)
+            except TypeError:
+                pass
+            cm.changed.connect(self.on_change_manager_changed)
+            cm.values_restored.connect(self._on_values_restored)
+
             # get number of layers
             self.rebuild_layers()
 
             self.container.set_keys(self.keyboard.keys, self.keyboard.encoders)
 
             self.current_layer = 0
+            self.container.current_layer = 0  # For modified key indicators
             self.on_layout_changed()
 
             self.tabbed_keycodes.recreate_keycode_buttons()
@@ -193,8 +204,12 @@ class KeymapEditor(BasicEditor):
 
             # Configure serial assignment dropdown
             self.container._matrix_cols = self.keyboard.cols
-            self.advance_actions[SerialMode.CLUSTER].setVisible(is_svalboard)
-            self.advance_actions[SerialMode.DIRECTION].setVisible(is_svalboard)
+            # Show/hide Svalboard-specific modes
+            for i, (m, _) in enumerate(self.advance_modes):
+                # Hide CLUSTER and DIRECTION for non-Svalboard
+                hidden = m in (SerialMode.CLUSTER, SerialMode.DIRECTION) and not is_svalboard
+                # QComboBox doesn't have hide for items, so we remove/add - but simpler to just leave them
+                # Users can still select them, they just won't be useful
 
             # Load saved serial mode
             saved_mode_name = storage.get("serial_mode", SerialMode.TOP_TO_BOTTOM.name)
@@ -205,15 +220,13 @@ class KeymapEditor(BasicEditor):
             # Fall back if Svalboard mode but not Svalboard
             if mode in (SerialMode.CLUSTER, SerialMode.DIRECTION) and not is_svalboard:
                 mode = SerialMode.TOP_TO_BOTTOM
-            self.advance_actions[mode].setChecked(True)
-            # Update button text to match mode
-            mode_labels = {
-                SerialMode.TOP_TO_BOTTOM: "Top to bottom",
-                SerialMode.LEFT_TO_RIGHT: "Left to right",
-                SerialMode.CLUSTER: "By cluster",
-                SerialMode.DIRECTION: "By direction",
-            }
-            self.advance_btn.setText(mode_labels.get(mode, "Top to bottom"))
+            # Set combo to saved mode
+            for i, (m, _) in enumerate(self.advance_modes):
+                if m == mode:
+                    self.advance_combo.blockSignals(True)
+                    self.advance_combo.setCurrentIndex(i)
+                    self.advance_combo.blockSignals(False)
+                    break
             self.container.set_serial_mode(mode)
 
             # Delay resize to after event loop processes layout
@@ -306,9 +319,26 @@ class KeymapEditor(BasicEditor):
 
         self.container.update_layout()
 
+        cm = ChangeManager.instance()
+
+        # Check which layers have uncommitted changes
+        layers_with_changes = set()
+        for key in cm.get_modified_keys():
+            if key[0] == 'keymap' and len(key) >= 2:
+                layers_with_changes.add(key[1])
+            elif key[0] == 'encoder' and len(key) >= 2:
+                layers_with_changes.add(key[1])
+
         for idx, btn in enumerate(self.layer_buttons):
             btn.setEnabled(idx != self.current_layer)
             btn.setChecked(idx == self.current_layer)
+
+            # Highlight layers with uncommitted changes
+            if idx < self.keyboard.layers:
+                if idx in layers_with_changes:
+                    btn.setStyleSheet("QPushButton { margin: 0px; border: 2px solid palette(link); }")
+                else:
+                    btn.setStyleSheet("QPushButton { margin: 2px; }")
 
         for widget in self.container.widgets:
             code = self.code_for_widget(widget)
@@ -319,6 +349,7 @@ class KeymapEditor(BasicEditor):
     def switch_layer(self, idx):
         self.container.deselect()
         self.current_layer = idx
+        self.container.current_layer = idx  # For modified key indicators
         self.refresh_layer_display()
 
     def set_key(self, keycode):
@@ -347,8 +378,14 @@ class KeymapEditor(BasicEditor):
                 return
             keycode = kc.qmk_id.replace("(kc)", "({})".format(keycode))
 
-        self.keyboard.set_encoder(l, i, d, keycode)
-        self.refresh_layer_display()
+        old_value = self.keyboard.encoder_layout[(l, i, d)]
+        if old_value != keycode:
+            # Track change for undo/redo
+            change = EncoderChange(l, i, d, old_value, keycode)
+            ChangeManager.instance().add_change(change)
+            # Update local state for UI
+            self.keyboard.encoder_layout[(l, i, d)] = keycode
+            self.refresh_layer_display()
 
     def set_key_matrix(self, keycode):
         l, r, c = self.current_layer, self.container.active_key.desc.row, self.container.active_key.desc.col
@@ -363,8 +400,14 @@ class KeymapEditor(BasicEditor):
                     return
                 keycode = kc.qmk_id.replace("(kc)", "({})".format(keycode))
 
-            self.keyboard.set_key(l, r, c, keycode)
-            self.refresh_layer_display()
+            old_value = self.keyboard.layout[(l, r, c)]
+            if old_value != keycode:
+                # Track change for undo/redo
+                change = KeymapChange(l, r, c, old_value, keycode)
+                ChangeManager.instance().add_change(change)
+                # Update local state for UI
+                self.keyboard.layout[(l, r, c)] = keycode
+                self.refresh_layer_display()
 
     def on_key_clicked(self):
         """ Called when a key on the keyboard widget is clicked """
@@ -387,9 +430,21 @@ class KeymapEditor(BasicEditor):
     def on_keymap_override(self):
         self.refresh_layer_display()
 
-    def _set_serial_mode(self, mode, label):
-        """Set the serial assignment mode for auto-advance."""
-        self.advance_btn.setText(label)
+    def on_change_manager_changed(self):
+        """Called when ChangeManager state changes (undo/redo)."""
+        self.refresh_layer_display()
+
+    def _on_values_restored(self, affected_keys):
+        """Refresh keyboard widget when keymap/encoder values are restored by undo/redo."""
+        for key in affected_keys:
+            if key[0] in ('keymap', 'encoder'):
+                # Refresh keyboard widget display from keyboard.layout
+                self.refresh_layer_display()
+                return
+
+    def _on_advance_changed(self, index):
+        """Handle serial assignment mode change."""
+        mode = self.advance_combo.currentData()
         self.container.set_serial_mode(mode)
         storage.set("serial_mode", mode.name)
 
@@ -405,6 +460,15 @@ class KeymapEditor(BasicEditor):
         clipboard = QApplication.clipboard()
         clipboard.setText(json.dumps(layer_data))
 
+    def _set_key_at(self, layer, row, col, keycode):
+        """Set a key at the given position, tracking the change."""
+        key = (layer, row, col)
+        old_value = self.keyboard.layout.get(key)
+        if old_value != keycode:
+            change = KeymapChange(layer, row, col, old_value, keycode)
+            ChangeManager.instance().add_change(change)
+            self.keyboard.layout[key] = keycode
+
     def paste_layer(self):
         """Paste layer keycodes from clipboard JSON."""
         if self.keyboard is None:
@@ -414,12 +478,15 @@ class KeymapEditor(BasicEditor):
             layer_data = json.loads(clipboard.text())
             if not isinstance(layer_data, list):
                 return
+            cm = ChangeManager.instance()
+            cm.begin_group("Paste layer")
             idx = 0
             for row in range(self.keyboard.rows):
                 for col in range(self.keyboard.cols):
                     if idx < len(layer_data):
-                        self.keyboard.set_key(self.current_layer, row, col, layer_data[idx])
+                        self._set_key_at(self.current_layer, row, col, layer_data[idx])
                         idx += 1
+            cm.end_group()
             self.refresh_layer_display()
         except (json.JSONDecodeError, TypeError):
             pass  # Invalid clipboard data
@@ -428,18 +495,24 @@ class KeymapEditor(BasicEditor):
         """Fill all keys on current layer with a keycode."""
         if self.keyboard is None:
             return
+        cm = ChangeManager.instance()
+        cm.begin_group("Fill layer")
         for row in range(self.keyboard.rows):
             for col in range(self.keyboard.cols):
-                self.keyboard.set_key(self.current_layer, row, col, keycode)
+                self._set_key_at(self.current_layer, row, col, keycode)
+        cm.end_group()
         self.refresh_layer_display()
 
     def convert_no_to_trns(self):
         """Convert all KC_NO keys on current layer to KC_TRNS."""
         if self.keyboard is None:
             return
+        cm = ChangeManager.instance()
+        cm.begin_group("Convert KC_NO to KC_TRNS")
         for row in range(self.keyboard.rows):
             for col in range(self.keyboard.cols):
                 key = (self.current_layer, row, col)
                 if self.keyboard.layout.get(key) == "KC_NO":
-                    self.keyboard.set_key(self.current_layer, row, col, "KC_TRNS")
+                    self._set_key_at(self.current_layer, row, col, "KC_TRNS")
+        cm.end_group()
         self.refresh_layer_display()

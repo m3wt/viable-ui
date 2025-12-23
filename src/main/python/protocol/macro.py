@@ -175,6 +175,17 @@ class ProtocolMacro(BaseProtocol):
                           retries=20)
         self.macro = data
 
+    def _commit_macro(self, data):
+        """Send macro data to the device (used by ChangeManager)."""
+        if len(data) > self.macro_memory:
+            return False
+        for x, chunk in enumerate(chunks(data, BUFFER_FETCH_CHUNK)):
+            off = x * BUFFER_FETCH_CHUNK
+            self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
+                          retries=20)
+        self.macro = data
+        return True
+
     def save_macro(self):
         macros = self.macros_deserialize(self.macro)
         out = []

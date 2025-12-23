@@ -4,6 +4,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
                              QLabel, QCheckBox, QScrollArea, QPushButton, QToolTip)
 
+from change_manager import ChangeManager, AltRepeatKeyChange
 from protocol.constants import VIAL_PROTOCOL_DYNAMIC
 from widgets.key_widget import KeyWidget
 from tabbed_keycodes import TabbedKeycodes
@@ -140,6 +141,8 @@ class AltRepeatKeyEntryUI(QObject):
 
         # Create the widget
         self.widget_container = QWidget()
+        self.widget_container.setObjectName("altRepeatKeyEntry")
+        self.widget_container.setStyleSheet("#altRepeatKeyEntry { border: 2px solid transparent; }")
         self.widget_container.setLayout(self.container)
         self.widget_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         # Set tooltip font programmatically
@@ -150,6 +153,13 @@ class AltRepeatKeyEntryUI(QObject):
 
     def widget(self):
         return self.widget_container
+
+    def set_modified(self, modified):
+        """Set visual indicator for uncommitted changes."""
+        if modified:
+            self.widget_container.setStyleSheet("#altRepeatKeyEntry { border: 2px solid palette(link); }")
+        else:
+            self.widget_container.setStyleSheet("#altRepeatKeyEntry { border: 2px solid transparent; }")
 
     def load(self, arep):
         # Block signals
@@ -292,6 +302,8 @@ class AltRepeatKey(BasicEditor):
 
     def refresh_display(self):
         """Refresh which entries are shown based on show_all setting"""
+        cm = ChangeManager.instance()
+
         # Clear layout
         while self.entries_layout.count():
             item = self.entries_layout.takeAt(0)
@@ -301,6 +313,9 @@ class AltRepeatKey(BasicEditor):
         # Count defined entries and add widgets
         defined_count = 0
         for e in self.entries:
+            # Update modified indicator
+            e.set_modified(cm.is_modified(('alt_repeat_key', e.idx)))
+
             if not e.is_empty():
                 defined_count += 1
 
@@ -345,7 +360,23 @@ class AltRepeatKey(BasicEditor):
         super().rebuild(device)
         if self.valid():
             self.keyboard = device.keyboard
+            # Connect to ChangeManager for undo/redo refresh
+            cm = ChangeManager.instance()
+            try:
+                cm.values_restored.disconnect(self._on_values_restored)
+            except TypeError:
+                pass
+            cm.values_restored.connect(self._on_values_restored)
             self.rebuild_ui()
+
+    def _on_values_restored(self, affected_keys):
+        """Refresh UI when alt repeat key values are restored by undo/redo."""
+        for key in affected_keys:
+            if key[0] == 'alt_repeat_key':
+                _, idx = key
+                if idx < len(self.entries):
+                    self.entries[idx].load(self.keyboard.alt_repeat_key_get(idx))
+        self.refresh_display()
 
     def valid(self):
         return isinstance(self.device, VialKeyboard) and \
@@ -353,7 +384,14 @@ class AltRepeatKey(BasicEditor):
                 and self.device.keyboard.alt_repeat_key_count > 0)
 
     def on_change(self, idx):
-        self.keyboard.alt_repeat_key_set(idx, self.entries[idx].save())
+        new_value = self.entries[idx].save()
+        old_value = self.keyboard.alt_repeat_key_entries[idx]
+
+        if old_value != new_value:
+            change = AltRepeatKeyChange(idx, old_value, new_value)
+            ChangeManager.instance().add_change(change)
+            self.keyboard.alt_repeat_key_entries[idx] = new_value
+
         # Refresh display in case entry became empty or non-empty
         if not self.show_all:
             self.refresh_display()

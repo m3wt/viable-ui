@@ -89,6 +89,15 @@ class ProtocolAltRepeatKey(BaseProtocol):
             self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
                                                 DYNAMIC_VIAL_ALT_REPEAT_KEY_SET, idx) + entry.serialize())
 
+    def _commit_alt_repeat_key(self, idx, entry):
+        """Send an alt repeat key change to the device (used by ChangeManager)."""
+        if entry.keycode == RESET_KEYCODE or entry.alt_keycode == RESET_KEYCODE:
+            Unlocker.unlock(self)
+        self.alt_repeat_key_entries[idx] = entry
+        self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
+                                            DYNAMIC_VIAL_ALT_REPEAT_KEY_SET, idx) + entry.serialize())
+        return True
+
     def save_alt_repeat_key(self):
         return [e.save() for e in self.alt_repeat_key_entries]
 

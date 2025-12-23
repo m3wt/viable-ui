@@ -1,9 +1,10 @@
 from collections import defaultdict
 
-from PyQt5.QtGui import QPainter, QColor, QPainterPath, QTransform, QBrush, QPolygonF, QPalette
+from PyQt5.QtGui import QPainter, QColor, QPainterPath, QTransform, QBrush, QPolygonF, QPalette, QPen
 from PyQt5.QtWidgets import QWidget, QToolTip, QApplication
 from PyQt5.QtCore import Qt, QSize, QRect, QPointF, pyqtSignal, QEvent, QRectF
 
+from change_manager import ChangeManager
 from constants import KEY_SIZE_RATIO, KEY_SPACING_RATIO, KEYBOARD_WIDGET_PADDING, \
     KEYBOARD_WIDGET_MASK_HEIGHT, KEY_ROUNDNESS, SHADOW_SIDE_PADDING, SHADOW_TOP_PADDING, SHADOW_BOTTOM_PADDING, \
     KEYBOARD_WIDGET_NONMASK_PADDING
@@ -284,6 +285,9 @@ class KeyboardWidget(QWidget):
         self._widget_order_cache = None
         self._matrix_cols = 6  # Set by keymap_editor for CLUSTER mode
 
+        # Current layer for modified key detection
+        self.current_layer = 0
+
     def set_keys(self, keys, encoders):
         self.common_widgets = []
         self.widgets_for_layout = []
@@ -497,6 +501,35 @@ class KeyboardWidget(QWidget):
             qp.setPen(text_pen)
             qp.setBrush(extra_brush)
             qp.drawPath(key.extra_draw_path)
+
+            # Draw ABA border for modified (pending) keys
+            cm = ChangeManager.instance()
+            if key.desc.row is not None:
+                change_key = ('keymap', self.current_layer, key.desc.row, key.desc.col)
+            elif key.desc.encoder_idx is not None:
+                change_key = ('encoder', self.current_layer, key.desc.encoder_idx, key.desc.encoder_dir)
+            else:
+                change_key = None
+
+            if change_key and cm.is_modified(change_key):
+                accent_color = palette.color(QPalette.Link)
+                bg_color = palette.color(QPalette.Window)
+
+                # ABA border: Accent-Background-Accent for guaranteed contrast
+                qp.setBrush(Qt.NoBrush)
+
+                # Outer accent (A) - 3px wide
+                outer_pen = QPen(accent_color)
+                outer_pen.setWidthF(3.0)
+                qp.setPen(outer_pen)
+                qp.drawPath(key.background_draw_path)
+
+                # Middle background (B) - drawn by scaling down slightly
+                # We use a slightly smaller path for the middle layer
+                mid_pen = QPen(bg_color)
+                mid_pen.setWidthF(1.5)
+                qp.setPen(mid_pen)
+                qp.drawPath(key.background_draw_path)
 
             qp.restore()
 

@@ -4,6 +4,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, Qt
 from PyQt5.QtWidgets import (QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QSpinBox, QScrollArea, QGridLayout)
 
+from change_manager import ChangeManager, TapDanceChange
 from protocol.constants import VIAL_PROTOCOL_DYNAMIC
 from widgets.key_widget import KeyWidget
 from tabbed_keycodes import TabbedKeycodes
@@ -78,11 +79,20 @@ class TapDanceEntryUI(QObject):
 
         # Create the widget
         self.widget_container = QWidget()
+        self.widget_container.setObjectName("tapDanceEntry")
+        self.widget_container.setStyleSheet("#tapDanceEntry { border: 2px solid transparent; }")
         self.widget_container.setLayout(self.container)
         self.widget_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     def update_index_label(self):
         self.index_label.setText(str(self.idx))
+
+    def set_modified(self, modified):
+        """Set visual indicator for uncommitted changes."""
+        if modified:
+            self.widget_container.setStyleSheet("#tapDanceEntry { border: 2px solid palette(link); }")
+        else:
+            self.widget_container.setStyleSheet("#tapDanceEntry { border: 2px solid transparent; }")
 
     def widget(self):
         return self.widget_container
@@ -209,6 +219,8 @@ class TapDance(BasicEditor):
 
     def refresh_display(self):
         """Refresh which tap dances are shown based on show_all setting"""
+        cm = ChangeManager.instance()
+
         # Clear flow layout
         while self.flow_layout.count():
             item = self.flow_layout.takeAt(0)
@@ -218,6 +230,9 @@ class TapDance(BasicEditor):
         # Count defined tap dances and add widgets
         defined_count = 0
         for e in self.tap_dance_entries:
+            # Update modified indicator
+            e.set_modified(cm.is_modified(('tap_dance', e.idx)))
+
             if not e.is_empty():
                 defined_count += 1
 
@@ -262,15 +277,41 @@ class TapDance(BasicEditor):
         super().rebuild(device)
         if self.valid():
             self.keyboard = device.keyboard
+            # Connect to ChangeManager for undo/redo refresh
+            cm = ChangeManager.instance()
+            try:
+                cm.values_restored.disconnect(self._on_values_restored)
+            except TypeError:
+                pass
+            cm.values_restored.connect(self._on_values_restored)
             self.rebuild_ui()
+
+    def _on_values_restored(self, affected_keys):
+        """Refresh UI when tap dance values are restored by undo/redo."""
+        for key in affected_keys:
+            if key[0] == 'tap_dance':
+                _, idx = key
+                if idx < len(self.tap_dance_entries):
+                    self.tap_dance_entries[idx].load(self.keyboard.tap_dance_get(idx))
+        self.refresh_display()
 
     def valid(self):
         return isinstance(self.device, VialKeyboard) and \
                (self.device.keyboard and self.device.keyboard.vial_protocol >= VIAL_PROTOCOL_DYNAMIC
                 and self.device.keyboard.tap_dance_count > 0)
 
+    def _apply_change(self, idx):
+        """Track a tap dance change for undo/redo."""
+        new_value = self.tap_dance_entries[idx].save()
+        old_value = self.keyboard.tap_dance_entries[idx]
+
+        if old_value != new_value:
+            change = TapDanceChange(idx, old_value, new_value)
+            ChangeManager.instance().add_change(change)
+            self.keyboard.tap_dance_entries[idx] = new_value
+
     def on_key_changed(self, idx):
-        self.keyboard.tap_dance_set(idx, self.tap_dance_entries[idx].save())
+        self._apply_change(idx)
         # Refresh display in case tap dance became empty or non-empty
         if not self.show_all:
             self.refresh_display()
@@ -280,4 +321,4 @@ class TapDance(BasicEditor):
             self.count_label.setText(f"{defined_count} of {len(self.tap_dance_entries)} tap dances defined")
 
     def on_timing_changed(self, idx):
-        self.keyboard.tap_dance_set(idx, self.tap_dance_entries[idx].save())
+        self._apply_change(idx)

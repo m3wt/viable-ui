@@ -145,6 +145,18 @@ class ProtocolSvalboard(BaseProtocol):
         )
         self.sval_layer_colors[layer] = (h, s, v)
 
+    def _commit_svalboard_layer_color(self, layer, hsv):
+        """Send a layer color change to the device (used by ChangeManager)."""
+        h, s, v = hsv
+        self.usb_send(
+            self.dev,
+            struct.pack("BBBBBB", SVAL_VIA_PREFIX, SVAL_SET_LAYER_HSV,
+                        layer, h, s, v),
+            retries=20
+        )
+        self.sval_layer_colors[layer] = (h, s, v)
+        return True
+
     def sval_set_settings(self, settings):
         """Set all settings"""
         self.usb_send(
@@ -161,6 +173,24 @@ class ProtocolSvalboard(BaseProtocol):
             retries=20
         )
         self.sval_settings = settings.copy()
+
+    def _commit_svalboard_settings(self, settings):
+        """Send settings to the device (used by ChangeManager)."""
+        self.usb_send(
+            self.dev,
+            struct.pack("BBBBBBBBBB", SVAL_VIA_PREFIX, SVAL_SET_SETTINGS,
+                        settings['left_dpi_index'],
+                        settings['right_dpi_index'],
+                        int(settings['left_scroll']),
+                        int(settings['right_scroll']),
+                        int(settings['axis_scroll_lock']),
+                        int(settings['auto_mouse']),
+                        settings['mh_timer_index'],
+                        settings['turbo_scan']),
+            retries=20
+        )
+        self.sval_settings = settings.copy()
+        return True
 
     def sval_reload_settings(self):
         """Reload just settings (not layer colors)"""

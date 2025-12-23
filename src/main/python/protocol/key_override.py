@@ -102,6 +102,15 @@ class ProtocolKeyOverride(BaseProtocol):
             self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
                                                 DYNAMIC_VIAL_KEY_OVERRIDE_SET, idx) + entry.serialize())
 
+    def _commit_key_override(self, idx, entry):
+        """Send a key override change to the device (used by ChangeManager)."""
+        if entry.replacement == RESET_KEYCODE:
+            Unlocker.unlock(self)
+        self.key_override_entries[idx] = entry
+        self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
+                                            DYNAMIC_VIAL_KEY_OVERRIDE_SET, idx) + entry.serialize())
+        return True
+
     def save_key_override(self):
         return [e.save() for e in self.key_override_entries]
 

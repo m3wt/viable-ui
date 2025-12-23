@@ -4,8 +4,10 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (QWidget, QPushButton, QHBoxLayout, QVBoxLayout,
                               QGridLayout, QLabel, QComboBox, QCheckBox,
-                              QColorDialog, QGroupBox, QScrollArea, QSizePolicy)
+                              QColorDialog, QGroupBox, QScrollArea, QSizePolicy,
+                              QFrame)
 
+from change_manager import ChangeManager, SvalboardSettingsChange, SvalboardLayerColorChange
 from editor.basic_editor import BasicEditor
 from widgets.clickable_label import ClickableLabel
 from util import tr
@@ -21,6 +23,7 @@ class SvalboardEditor(BasicEditor):
         # Pending changes (for deferred save)
         self.pending_layer_colors = None
         self.pending_settings = None
+        self.committed_settings = None  # Track committed state for highlighting
 
         # Create scrollable container
         scroll = QScrollArea()
@@ -51,9 +54,6 @@ class SvalboardEditor(BasicEditor):
         self.container.addStretch()
         self.addWidget(scroll)
 
-        # Buttons at bottom (outside scroll area)
-        self._create_buttons()
-
     def _create_layer_colors_section(self):
         group = QGroupBox(tr("SvalboardEditor", "Layer Colors"))
         layout = QGridLayout()
@@ -65,6 +65,8 @@ class SvalboardEditor(BasicEditor):
             col = i % 8
 
             frame = QWidget()
+            frame.setObjectName("layer_color_frame")
+            frame.setStyleSheet("#layer_color_frame { border: 2px solid transparent; }")
             frame_layout = QVBoxLayout()
             frame_layout.setContentsMargins(2, 2, 2, 2)
             frame_layout.setSpacing(2)
@@ -93,33 +95,53 @@ class SvalboardEditor(BasicEditor):
         pointer_container = QHBoxLayout()
 
         # Left Pointer group
-        left_group = QGroupBox(tr("SvalboardEditor", "Left Pointer"))
-        left_layout = QGridLayout()
+        self.left_pointer_group = QGroupBox(tr("SvalboardEditor", "Left Pointer"))
+        left_group = self.left_pointer_group
+        left_layout = QVBoxLayout()
 
-        left_layout.addWidget(QLabel(tr("SvalboardEditor", "DPI")), 0, 0)
+        # DPI row in a frame for highlighting
+        self.left_dpi_frame = QFrame()
+        self.left_dpi_frame.setObjectName("setting_frame")
+        self.left_dpi_frame.setStyleSheet("#setting_frame { border: 2px solid transparent; }")
+        dpi_layout = QHBoxLayout()
+        dpi_layout.setContentsMargins(2, 2, 2, 2)
+        dpi_layout.addWidget(QLabel(tr("SvalboardEditor", "DPI")))
         self.left_dpi = QComboBox()
         self.left_dpi.currentIndexChanged.connect(self.on_setting_changed)
-        left_layout.addWidget(self.left_dpi, 0, 1)
+        dpi_layout.addWidget(self.left_dpi)
+        self.left_dpi_frame.setLayout(dpi_layout)
+        left_layout.addWidget(self.left_dpi_frame)
 
         self.left_scroll = QCheckBox(tr("SvalboardEditor", "Scroll mode"))
+        self.left_scroll.setStyleSheet("border: 2px solid transparent;")
         self.left_scroll.stateChanged.connect(self.on_setting_changed)
-        left_layout.addWidget(self.left_scroll, 1, 0, 1, 2)
+        left_layout.addWidget(self.left_scroll)
 
         left_group.setLayout(left_layout)
         pointer_container.addWidget(left_group)
 
         # Right Pointer group
-        right_group = QGroupBox(tr("SvalboardEditor", "Right Pointer"))
-        right_layout = QGridLayout()
+        self.right_pointer_group = QGroupBox(tr("SvalboardEditor", "Right Pointer"))
+        right_group = self.right_pointer_group
+        right_layout = QVBoxLayout()
 
-        right_layout.addWidget(QLabel(tr("SvalboardEditor", "DPI")), 0, 0)
+        # DPI row in a frame for highlighting
+        self.right_dpi_frame = QFrame()
+        self.right_dpi_frame.setObjectName("setting_frame")
+        self.right_dpi_frame.setStyleSheet("#setting_frame { border: 2px solid transparent; }")
+        dpi_layout = QHBoxLayout()
+        dpi_layout.setContentsMargins(2, 2, 2, 2)
+        dpi_layout.addWidget(QLabel(tr("SvalboardEditor", "DPI")))
         self.right_dpi = QComboBox()
         self.right_dpi.currentIndexChanged.connect(self.on_setting_changed)
-        right_layout.addWidget(self.right_dpi, 0, 1)
+        dpi_layout.addWidget(self.right_dpi)
+        self.right_dpi_frame.setLayout(dpi_layout)
+        right_layout.addWidget(self.right_dpi_frame)
 
         self.right_scroll = QCheckBox(tr("SvalboardEditor", "Scroll mode"))
+        self.right_scroll.setStyleSheet("border: 2px solid transparent;")
         self.right_scroll.stateChanged.connect(self.on_setting_changed)
-        right_layout.addWidget(self.right_scroll, 1, 0, 1, 2)
+        right_layout.addWidget(self.right_scroll)
 
         right_group.setLayout(right_layout)
         pointer_container.addWidget(right_group)
@@ -127,63 +149,63 @@ class SvalboardEditor(BasicEditor):
         self.container.addLayout(pointer_container)
 
     def _create_mouse_section(self):
-        group = QGroupBox(tr("SvalboardEditor", "Mouse Layer"))
-        layout = QGridLayout()
+        self.mouse_group = QGroupBox(tr("SvalboardEditor", "Mouse Layer"))
+        layout = QVBoxLayout()
 
         # Auto-mouse
         self.auto_mouse = QCheckBox(tr("SvalboardEditor", "Enable"))
+        self.auto_mouse.setStyleSheet("border: 2px solid transparent;")
         self.auto_mouse.stateChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.auto_mouse, 0, 0, 1, 2)
+        layout.addWidget(self.auto_mouse)
 
-        # Mouse layer timeout (populated dynamically from firmware)
-        layout.addWidget(QLabel(tr("SvalboardEditor", "Timeout")), 1, 0)
+        # Mouse layer timeout in a frame for highlighting
+        self.mh_timeout_frame = QFrame()
+        self.mh_timeout_frame.setObjectName("setting_frame")
+        self.mh_timeout_frame.setStyleSheet("#setting_frame { border: 2px solid transparent; }")
+        timeout_layout = QHBoxLayout()
+        timeout_layout.setContentsMargins(2, 2, 2, 2)
+        timeout_layout.addWidget(QLabel(tr("SvalboardEditor", "Timeout")))
         self.mh_timeout = QComboBox()
         self.mh_timeout.currentIndexChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.mh_timeout, 1, 1)
+        timeout_layout.addWidget(self.mh_timeout)
+        self.mh_timeout_frame.setLayout(timeout_layout)
+        layout.addWidget(self.mh_timeout_frame)
 
-        group.setLayout(layout)
-        self.container.addWidget(group)
+        self.mouse_group.setLayout(layout)
+        self.container.addWidget(self.mouse_group)
 
     def _create_scroll_section(self):
         group = QGroupBox(tr("SvalboardEditor", "Scroll"))
-        layout = QGridLayout()
+        layout = QVBoxLayout()
 
         # Axis scroll lock
         self.axis_scroll_lock = QCheckBox(tr("SvalboardEditor", "Axis lock"))
+        self.axis_scroll_lock.setStyleSheet("border: 2px solid transparent;")
         self.axis_scroll_lock.stateChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.axis_scroll_lock, 0, 0, 1, 2)
+        layout.addWidget(self.axis_scroll_lock)
 
         group.setLayout(layout)
         self.container.addWidget(group)
 
     def _create_experimental_section(self):
         group = QGroupBox(tr("SvalboardEditor", "Experimental/Dangerous"))
-        layout = QGridLayout()
+        layout = QVBoxLayout()
 
-        # Turbo scan (populated dynamically from firmware)
-        layout.addWidget(QLabel(tr("SvalboardEditor", "Turbo scan level")), 0, 0)
+        # Turbo scan in a frame for highlighting
+        self.turbo_scan_frame = QFrame()
+        self.turbo_scan_frame.setObjectName("setting_frame")
+        self.turbo_scan_frame.setStyleSheet("#setting_frame { border: 2px solid transparent; }")
+        turbo_layout = QHBoxLayout()
+        turbo_layout.setContentsMargins(2, 2, 2, 2)
+        turbo_layout.addWidget(QLabel(tr("SvalboardEditor", "Turbo scan level")))
         self.turbo_scan = QComboBox()
         self.turbo_scan.currentIndexChanged.connect(self.on_setting_changed)
-        layout.addWidget(self.turbo_scan, 0, 1)
+        turbo_layout.addWidget(self.turbo_scan)
+        self.turbo_scan_frame.setLayout(turbo_layout)
+        layout.addWidget(self.turbo_scan_frame)
 
         group.setLayout(layout)
         self.container.addWidget(group)
-
-    def _create_buttons(self):
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-
-        self.btn_save = QPushButton(tr("SvalboardEditor", "Save"))
-        self.btn_save.clicked.connect(self.on_save)
-        self.btn_save.setEnabled(False)
-        buttons.addWidget(self.btn_save)
-
-        self.btn_undo = QPushButton(tr("SvalboardEditor", "Undo"))
-        self.btn_undo.clicked.connect(self.on_undo)
-        self.btn_undo.setEnabled(False)
-        buttons.addWidget(self.btn_undo)
-
-        self.addLayout(buttons)
 
     def valid(self):
         return (isinstance(self.device, VialKeyboard) and
@@ -194,11 +216,34 @@ class SvalboardEditor(BasicEditor):
         super().rebuild(device)
         if self.valid():
             self.keyboard = device.keyboard
+            # Connect to ChangeManager signals
+            cm = ChangeManager.instance()
+            try:
+                cm.values_restored.disconnect(self._on_values_restored)
+            except TypeError:
+                pass
+            try:
+                cm.saved.disconnect(self._on_saved)
+            except TypeError:
+                pass
+            cm.values_restored.connect(self._on_values_restored)
+            cm.saved.connect(self._on_saved)
             self._update_layer_visibility()
             self._update_dpi_dropdowns()
             self._update_mh_timeout_dropdown()
             self._update_turbo_scan_dropdown()
             self.update_from_keyboard()
+
+    def _on_values_restored(self, affected_keys):
+        """Refresh UI when values are restored by undo/redo."""
+        needs_refresh = False
+        for key in affected_keys:
+            if key[0] in ('svalboard_settings', 'svalboard_layer_color'):
+                needs_refresh = True
+                break
+        if needs_refresh:
+            # Don't reset committed_settings on undo/redo - preserve original committed state
+            self.update_from_keyboard(reset_committed=False)
 
     def _update_dpi_dropdowns(self):
         """Populate DPI dropdowns with values from firmware"""
@@ -247,8 +292,13 @@ class SvalboardEditor(BasicEditor):
             else:
                 frame.hide()
 
-    def update_from_keyboard(self):
-        """Load current state from keyboard into widgets"""
+    def update_from_keyboard(self, reset_committed=True):
+        """Load current state from keyboard into widgets.
+
+        Args:
+            reset_committed: If True, also reset committed_settings (for initial load/save).
+                            If False, preserve committed_settings (for undo/redo refresh).
+        """
         if not self.keyboard:
             return
 
@@ -270,6 +320,8 @@ class SvalboardEditor(BasicEditor):
         if self.keyboard.sval_settings:
             settings = self.keyboard.sval_settings
             self.pending_settings = settings.copy()
+            if reset_committed:
+                self.committed_settings = settings.copy()  # Track committed state
 
             self.left_dpi.setCurrentIndex(settings.get('left_dpi_index', 0))
             self.right_dpi.setCurrentIndex(settings.get('right_dpi_index', 0))
@@ -282,6 +334,7 @@ class SvalboardEditor(BasicEditor):
 
         self._unblock_signals()
         self._update_buttons()
+        self._update_settings_highlights()
 
     def _block_signals(self):
         self.left_dpi.blockSignals(True)
@@ -314,23 +367,43 @@ class SvalboardEditor(BasicEditor):
 
         dlg = QColorDialog()
         dlg.setCurrentColor(current_color)
-        if dlg.exec_():
-            color = dlg.selectedColor()
+
+        def on_color_selected(color):
             qt_h = color.hue() if color.hue() >= 0 else 0
             # Convert Qt hue (0-359) back to firmware hue (0-255)
             fw_h = int(qt_h * 255 / 359) if qt_h > 0 else 0
             new_s = color.saturation()
             new_v = color.value()
 
-            self.pending_layer_colors[layer_idx] = (fw_h, new_s, new_v)
+            old_hsv = self.pending_layer_colors[layer_idx]
+            new_hsv = (fw_h, new_s, new_v)
+            if old_hsv != new_hsv:
+                # Track change for undo/redo
+                change = SvalboardLayerColorChange(layer_idx, old_hsv, new_hsv)
+                ChangeManager.instance().add_change(change)
+                self.pending_layer_colors[layer_idx] = new_hsv
+                self.keyboard.sval_layer_colors[layer_idx] = new_hsv
+
             self.layer_color_widgets[layer_idx][1].setStyleSheet(
                 f"background-color: {color.name()}; border: 1px solid gray;"
             )
             self._update_buttons()
 
+        import sys
+        if sys.platform == "emscripten":
+            # On web, use non-blocking show() to avoid emscripten_sleep
+            dlg.colorSelected.connect(on_color_selected)
+            self._color_dialog = dlg  # prevent garbage collection
+            dlg.show()
+        else:
+            if dlg.exec_():
+                on_color_selected(dlg.selectedColor())
+
     def on_setting_changed(self):
         if not self.pending_settings:
             return
+
+        old_settings = self.pending_settings.copy()
 
         self.pending_settings['left_dpi_index'] = self.left_dpi.currentIndex()
         self.pending_settings['right_dpi_index'] = self.right_dpi.currentIndex()
@@ -341,52 +414,66 @@ class SvalboardEditor(BasicEditor):
         self.pending_settings['mh_timer_index'] = self.mh_timeout.currentIndex()
         self.pending_settings['turbo_scan'] = self.turbo_scan.currentIndex()
 
+        if old_settings != self.pending_settings:
+            # Track change for undo/redo
+            new_settings = self.pending_settings.copy()
+            change = SvalboardSettingsChange(old_settings, new_settings)
+            ChangeManager.instance().add_change(change)
+            self.keyboard.sval_settings = new_settings
+
         self._update_buttons()
-
-    def _has_changes(self):
-        if not self.keyboard:
-            return False
-
-        # Check layer colors
-        if self.pending_layer_colors and self.keyboard.sval_layer_colors:
-            if self.pending_layer_colors != list(self.keyboard.sval_layer_colors):
-                return True
-
-        # Check settings
-        if self.pending_settings and self.keyboard.sval_settings:
-            if self.pending_settings != self.keyboard.sval_settings:
-                return True
-
-        return False
 
     def _update_buttons(self):
-        has_changes = self._has_changes()
-        self.btn_save.setEnabled(has_changes)
-        self.btn_undo.setEnabled(has_changes)
+        cm = ChangeManager.instance()
+        settings_modified = cm.is_modified(('svalboard_settings',))
 
-    def on_save(self):
-        if not self.keyboard:
+        # Highlight just the frame around modified layer color+number
+        for i in range(len(self.layer_color_widgets)):
+            is_modified = cm.is_modified(('svalboard_layer_color', i))
+            frame, color_btn, label = self.layer_color_widgets[i]
+            if is_modified:
+                frame.setStyleSheet("#layer_color_frame { border: 2px solid palette(link); }")
+            else:
+                frame.setStyleSheet("#layer_color_frame { border: 2px solid transparent; }")
+
+        # Highlight individual changed settings widgets
+        self._update_settings_highlights()
+
+    def _update_settings_highlights(self):
+        """Highlight individual widgets that have uncommitted changes."""
+        if not self.pending_settings or not self.committed_settings:
             return
 
-        # Save layer colors
-        if self.pending_layer_colors and self.keyboard.sval_layer_colors:
-            for i, (h, s, v) in enumerate(self.pending_layer_colors):
-                if i < len(self.keyboard.sval_layer_colors):
-                    old_h, old_s, old_v = self.keyboard.sval_layer_colors[i]
-                    if (h, s, v) != (old_h, old_s, old_v):
-                        self.keyboard.sval_set_layer_color(i, h, s, v)
+        frame_highlight = "#setting_frame { border: 2px solid palette(link); }"
+        frame_normal = "#setting_frame { border: 2px solid transparent; }"
+        checkbox_highlight = "border: 2px solid palette(link);"
+        checkbox_normal = "border: 2px solid transparent;"
 
-        # Save settings
-        if self.pending_settings and self.keyboard.sval_settings:
-            if self.pending_settings != self.keyboard.sval_settings:
-                self.keyboard.sval_set_settings(self.pending_settings)
+        # Map settings keys to (widget_or_frame, is_frame)
+        widget_map = {
+            'left_dpi_index': (self.left_dpi_frame, True),
+            'right_dpi_index': (self.right_dpi_frame, True),
+            'left_scroll': (self.left_scroll, False),
+            'right_scroll': (self.right_scroll, False),
+            'axis_scroll_lock': (self.axis_scroll_lock, False),
+            'auto_mouse': (self.auto_mouse, False),
+            'mh_timer_index': (self.mh_timeout_frame, True),
+            'turbo_scan': (self.turbo_scan_frame, True),
+        }
 
+        for key, (widget, is_frame) in widget_map.items():
+            current = self.pending_settings.get(key)
+            committed = self.committed_settings.get(key)
+            if current != committed:
+                widget.setStyleSheet(frame_highlight if is_frame else checkbox_highlight)
+            else:
+                widget.setStyleSheet(frame_normal if is_frame else checkbox_normal)
+
+    def _on_saved(self):
+        """Update committed state after global save."""
+        if self.pending_settings:
+            self.committed_settings = self.pending_settings.copy()
         self._update_buttons()
-
-    def on_undo(self):
-        self.keyboard.sval_reload_layer_colors()
-        self.keyboard.sval_reload_settings()
-        self.update_from_keyboard()
 
     def save_state(self):
         """Return current state as a dict for saving to file"""

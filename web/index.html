@@ -345,7 +345,21 @@
         }
 
         window.onerror = function (message, source, lineno, colno, error) {
-            alert(message);
+            // Handle ErrorEvent objects (from workers/canvas) and regular errors
+            var msg = message;
+            if (message && typeof message === 'object') {
+                msg = message.message || message.toString();
+            }
+            if (error && error.stack) {
+                msg += "\n\nStack: " + error.stack;
+            }
+            console.error("window.onerror:", message, source, lineno, colno, error);
+            alert(msg);
+        };
+
+        window.onunhandledrejection = function (event) {
+            console.error("Unhandled rejection:", event.reason);
+            alert("Unhandled rejection: " + (event.reason ? event.reason.toString() : "unknown"));
         };
     </script>
 

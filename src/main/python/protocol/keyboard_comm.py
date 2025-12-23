@@ -324,6 +324,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                                                 Keycode.deserialize(code)), retries=20)
             self.layout[key] = code
 
+    def _commit_key(self, layer, row, col, code):
+        """Send a key change to the device (used by ChangeManager)."""
+        if code == RESET_KEYCODE:
+            Unlocker.unlock(self)
+        self.usb_send(self.dev, struct.pack(">BBBBH", CMD_VIA_SET_KEYCODE, layer, row, col,
+                                            Keycode.deserialize(code)), retries=20)
+        self.layout[(layer, row, col)] = code
+        return True
+
     def set_encoder(self, layer, index, direction, code):
         key = (layer, index, direction)
         if self.encoder_layout[key] != code:
@@ -333,6 +342,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             self.usb_send(self.dev, struct.pack(">BBBBBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_SET_ENCODER,
                                                 layer, index, direction, Keycode.deserialize(code)), retries=20)
             self.encoder_layout[key] = code
+
+    def _commit_encoder(self, layer, index, direction, code):
+        """Send an encoder change to the device (used by ChangeManager)."""
+        if code == RESET_KEYCODE:
+            Unlocker.unlock(self)
+        self.usb_send(self.dev, struct.pack(">BBBBBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_SET_ENCODER,
+                                            layer, index, direction, Keycode.deserialize(code)), retries=20)
+        self.encoder_layout[(layer, index, direction)] = code
+        return True
 
     def set_layout_options(self, options):
         if self.layout_options != -1 and self.layout_options != options:
@@ -520,6 +538,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                              + QmkSettings.qsid_serialize(qsid, value),
                              retries=20)
         return data[0]
+
+    def _commit_qmk_setting(self, qsid, value):
+        """Send a QMK setting change to the device (used by ChangeManager)."""
+        from editor.qmk_settings import QmkSettings
+        self.settings[qsid] = value
+        data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_SET, qsid)
+                             + QmkSettings.qsid_serialize(qsid, value),
+                             retries=20)
+        return data[0] == 0
 
     def qmk_settings_reset(self):
         self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_RESET))

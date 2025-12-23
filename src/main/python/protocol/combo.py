@@ -34,6 +34,18 @@ class ProtocolCombo(BaseProtocol):
         self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
                                             DYNAMIC_VIAL_COMBO_SET, idx) + serialized, retries=20)
 
+    def _commit_combo(self, idx, entry):
+        """Send a combo change to the device (used by ChangeManager)."""
+        if entry[-1] == RESET_KEYCODE:
+            Unlocker.unlock(self)
+        self.combo_entries[idx] = entry
+        raw_entry = [Keycode.deserialize(entry[0]), Keycode.deserialize(entry[1]), Keycode.deserialize(entry[2]),
+                     Keycode.deserialize(entry[3]), Keycode.deserialize(entry[4])]
+        serialized = struct.pack("<HHHHH", *raw_entry)
+        self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
+                                            DYNAMIC_VIAL_COMBO_SET, idx) + serialized, retries=20)
+        return True
+
     def save_combo(self):
         combo = []
         for entry in self.combo_entries:

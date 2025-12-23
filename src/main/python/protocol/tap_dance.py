@@ -34,6 +34,19 @@ class ProtocolTapDance(BaseProtocol):
         self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
                                             DYNAMIC_VIAL_TAP_DANCE_SET, idx) + serialized, retries=20)
 
+    def _commit_tap_dance(self, idx, entry):
+        """Send a tap dance change to the device (used by ChangeManager)."""
+        for x in range(4):
+            if entry[x] == RESET_KEYCODE:
+                Unlocker.unlock(self)
+        self.tap_dance_entries[idx] = entry
+        raw_entry = [Keycode.deserialize(entry[0]), Keycode.deserialize(entry[1]), Keycode.deserialize(entry[2]),
+                     Keycode.deserialize(entry[3]), entry[4]]
+        serialized = struct.pack("<HHHHH", *raw_entry)
+        self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
+                                            DYNAMIC_VIAL_TAP_DANCE_SET, idx) + serialized, retries=20)
+        return True
+
     def save_tap_dance(self):
         tap_dance = []
         for entry in self.tap_dance_entries:

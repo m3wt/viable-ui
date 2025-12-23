@@ -4,6 +4,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, Qt
 from PyQt5.QtWidgets import (QWidget, QSizePolicy, QHBoxLayout, QVBoxLayout, QLabel,
                              QScrollArea, QPushButton)
 
+from change_manager import ChangeManager, ComboChange
 from protocol.constants import VIAL_PROTOCOL_DYNAMIC
 from widgets.key_widget import KeyWidget
 from tabbed_keycodes import TabbedKeycodes
@@ -59,11 +60,20 @@ class ComboEntryUI(QObject):
 
         # Create the widget
         self.widget_container = QWidget()
+        self.widget_container.setObjectName("comboEntry")
+        self.widget_container.setStyleSheet("#comboEntry { border: 2px solid transparent; }")
         self.widget_container.setLayout(self.container)
         self.widget_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     def update_index_label(self):
         self.index_label.setText(str(self.idx + 1))
+
+    def set_modified(self, modified):
+        """Set visual indicator for uncommitted changes."""
+        if modified:
+            self.widget_container.setStyleSheet("#comboEntry { border: 2px solid palette(link); }")
+        else:
+            self.widget_container.setStyleSheet("#comboEntry { border: 2px solid transparent; }")
 
     def widget(self):
         return self.widget_container
@@ -188,6 +198,8 @@ class Combos(BasicEditor):
 
     def refresh_display(self):
         """Refresh which combos are shown based on show_all setting"""
+        cm = ChangeManager.instance()
+
         # Clear flow layout
         while self.flow_layout.count():
             item = self.flow_layout.takeAt(0)
@@ -197,6 +209,9 @@ class Combos(BasicEditor):
         # Count defined combos and add widgets
         defined_count = 0
         for e in self.combo_entries:
+            # Update modified indicator
+            e.set_modified(cm.is_modified(('combo', e.idx)))
+
             if not e.is_empty():
                 defined_count += 1
 
@@ -244,7 +259,23 @@ class Combos(BasicEditor):
         super().rebuild(device)
         if self.valid():
             self.keyboard = device.keyboard
+            # Connect to ChangeManager for undo/redo refresh
+            cm = ChangeManager.instance()
+            try:
+                cm.values_restored.disconnect(self._on_values_restored)
+            except TypeError:
+                pass
+            cm.values_restored.connect(self._on_values_restored)
             self.rebuild_ui()
+
+    def _on_values_restored(self, affected_keys):
+        """Refresh UI when combo values are restored by undo/redo."""
+        for key in affected_keys:
+            if key[0] == 'combo':
+                _, idx = key
+                if idx < len(self.combo_entries):
+                    self.combo_entries[idx].load(self.keyboard.combo_get(idx))
+        self.refresh_display()
 
     def valid(self):
         return isinstance(self.device, VialKeyboard) and \
@@ -252,7 +283,16 @@ class Combos(BasicEditor):
                 and self.device.keyboard.combo_count > 0)
 
     def on_key_changed(self, idx):
-        self.keyboard.combo_set(idx, self.combo_entries[idx].save())
+        new_value = self.combo_entries[idx].save()
+        old_value = self.keyboard.combo_entries[idx]
+
+        if old_value != new_value:
+            # Track change in ChangeManager for undo/redo
+            change = ComboChange(idx, old_value, new_value)
+            ChangeManager.instance().add_change(change)
+            # Update local state
+            self.keyboard.combo_entries[idx] = new_value
+
         # Refresh display in case combo became empty or non-empty
         if not self.show_all:
             self.refresh_display()
