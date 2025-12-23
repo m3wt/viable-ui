@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import json
 
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget, QScrollArea, QSizePolicy
+from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
+                             QScrollArea, QSizePolicy, QToolButton, QMenu, QApplication,
+                             QActionGroup)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 
 from any_keycode_dialog import AnyKeycodeDialog
@@ -12,6 +14,8 @@ from widgets.square_button import SquareButton
 from tabbed_keycodes import TabbedKeycodes, keycode_filter_masked
 from util import tr, KeycodeDisplay
 from vial_device import VialKeyboard
+from serial_assignment import SerialMode
+import storage
 
 
 class ClickableWidget(QWidget):
@@ -38,6 +42,46 @@ class KeymapEditor(BasicEditor):
         layout_labels_container.addWidget(layer_label)
         layout_labels_container.addLayout(self.layout_layers)
         layout_labels_container.addStretch()
+
+        # Auto-Advance dropdown
+        self.advance_btn = QToolButton()
+        self.advance_btn.setText("Top to bottom")
+        self.advance_btn.setPopupMode(QToolButton.InstantPopup)
+        self.advance_menu = QMenu()
+        self.advance_group = QActionGroup(self)
+        self.advance_actions = {}
+
+        advance_modes = [
+            (SerialMode.TOP_TO_BOTTOM, "Top to bottom", "Advance down rows, then across columns"),
+            (SerialMode.LEFT_TO_RIGHT, "Left to right", "Advance across columns, then down rows"),
+            (SerialMode.CLUSTER, "By cluster", "Advance through each finger cluster, then thumbs"),
+            (SerialMode.DIRECTION, "By direction", "Advance through all keys of each direction (N→C→S→W→E→thumbs)"),
+        ]
+        for mode, label, tooltip in advance_modes:
+            act = self.advance_menu.addAction(label)
+            act.setCheckable(True)
+            act.setToolTip(tooltip)
+            act.triggered.connect(lambda checked, m=mode, lbl=label: self._set_serial_mode(m, lbl))
+            self.advance_group.addAction(act)
+            self.advance_actions[mode] = act
+
+        self.advance_btn.setMenu(self.advance_menu)
+        layout_labels_container.addWidget(self.advance_btn)
+
+        # Layer operations dropdown
+        self.layer_btn = QToolButton()
+        self.layer_btn.setText("Layer ▾")
+        self.layer_btn.setPopupMode(QToolButton.InstantPopup)
+        self.layer_menu = QMenu()
+        self.layer_menu.addAction("Copy layer", self.copy_layer)
+        self.layer_menu.addAction("Paste layer", self.paste_layer)
+        self.layer_menu.addSeparator()
+        self.layer_menu.addAction("Fill with KC_NO", lambda: self.fill_layer("KC_NO"))
+        self.layer_menu.addAction("Fill with KC_TRNS", lambda: self.fill_layer("KC_TRNS"))
+        self.layer_menu.addAction("KC_NO → KC_TRNS", self.convert_no_to_trns)
+        self.layer_btn.setMenu(self.layer_menu)
+        layout_labels_container.addWidget(self.layer_btn)
+
         layout_labels_container.addLayout(self.layout_size)
 
         # contains the actual keyboard
@@ -146,6 +190,31 @@ class KeymapEditor(BasicEditor):
             is_svalboard = getattr(self.keyboard, 'is_svalboard', False)
             label = "Svalboard" if is_svalboard else "User"
             self.tabbed_keycodes.set_user_tab_label(label)
+
+            # Configure serial assignment dropdown
+            self.container._matrix_cols = self.keyboard.cols
+            self.advance_actions[SerialMode.CLUSTER].setVisible(is_svalboard)
+            self.advance_actions[SerialMode.DIRECTION].setVisible(is_svalboard)
+
+            # Load saved serial mode
+            saved_mode_name = storage.get("serial_mode", SerialMode.TOP_TO_BOTTOM.name)
+            try:
+                mode = SerialMode[saved_mode_name]
+            except KeyError:
+                mode = SerialMode.TOP_TO_BOTTOM
+            # Fall back if Svalboard mode but not Svalboard
+            if mode in (SerialMode.CLUSTER, SerialMode.DIRECTION) and not is_svalboard:
+                mode = SerialMode.TOP_TO_BOTTOM
+            self.advance_actions[mode].setChecked(True)
+            # Update button text to match mode
+            mode_labels = {
+                SerialMode.TOP_TO_BOTTOM: "Top to bottom",
+                SerialMode.LEFT_TO_RIGHT: "Left to right",
+                SerialMode.CLUSTER: "By cluster",
+                SerialMode.DIRECTION: "By direction",
+            }
+            self.advance_btn.setText(mode_labels.get(mode, "Top to bottom"))
+            self.container.set_serial_mode(mode)
 
             # Delay resize to after event loop processes layout
             QTimer.singleShot(0, self._update_container_size)
@@ -316,4 +385,61 @@ class KeymapEditor(BasicEditor):
         self.keyboard.set_layout_options(self.layout_editor.pack())
 
     def on_keymap_override(self):
+        self.refresh_layer_display()
+
+    def _set_serial_mode(self, mode, label):
+        """Set the serial assignment mode for auto-advance."""
+        self.advance_btn.setText(label)
+        self.container.set_serial_mode(mode)
+        storage.set("serial_mode", mode.name)
+
+    def copy_layer(self):
+        """Copy current layer keycodes to clipboard as JSON."""
+        if self.keyboard is None:
+            return
+        layer_data = []
+        for row in range(self.keyboard.rows):
+            for col in range(self.keyboard.cols):
+                key = (self.current_layer, row, col)
+                layer_data.append(self.keyboard.layout.get(key, "KC_NO"))
+        clipboard = QApplication.clipboard()
+        clipboard.setText(json.dumps(layer_data))
+
+    def paste_layer(self):
+        """Paste layer keycodes from clipboard JSON."""
+        if self.keyboard is None:
+            return
+        clipboard = QApplication.clipboard()
+        try:
+            layer_data = json.loads(clipboard.text())
+            if not isinstance(layer_data, list):
+                return
+            idx = 0
+            for row in range(self.keyboard.rows):
+                for col in range(self.keyboard.cols):
+                    if idx < len(layer_data):
+                        self.keyboard.set_key(self.current_layer, row, col, layer_data[idx])
+                        idx += 1
+            self.refresh_layer_display()
+        except (json.JSONDecodeError, TypeError):
+            pass  # Invalid clipboard data
+
+    def fill_layer(self, keycode):
+        """Fill all keys on current layer with a keycode."""
+        if self.keyboard is None:
+            return
+        for row in range(self.keyboard.rows):
+            for col in range(self.keyboard.cols):
+                self.keyboard.set_key(self.current_layer, row, col, keycode)
+        self.refresh_layer_display()
+
+    def convert_no_to_trns(self):
+        """Convert all KC_NO keys on current layer to KC_TRNS."""
+        if self.keyboard is None:
+            return
+        for row in range(self.keyboard.rows):
+            for col in range(self.keyboard.cols):
+                key = (self.current_layer, row, col)
+                if self.keyboard.layout.get(key) == "KC_NO":
+                    self.keyboard.set_key(self.current_layer, row, col, "KC_TRNS")
         self.refresh_layer_display()

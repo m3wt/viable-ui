@@ -8,6 +8,7 @@ from constants import KEY_SIZE_RATIO, KEY_SPACING_RATIO, KEYBOARD_WIDGET_PADDING
     KEYBOARD_WIDGET_MASK_HEIGHT, KEY_ROUNDNESS, SHADOW_SIDE_PADDING, SHADOW_TOP_PADDING, SHADOW_BOTTOM_PADDING, \
     KEYBOARD_WIDGET_NONMASK_PADDING
 from themes import Theme
+from serial_assignment import SerialMode, SVALBOARD_DIRECTION_ORDER, get_svalboard_cluster_order
 
 
 class KeyWidget:
@@ -278,6 +279,11 @@ class KeyboardWidget(QWidget):
         self.active_key = None
         self.active_mask = False
 
+        # Serial assignment mode for select_next()
+        self.serial_mode = SerialMode.TOP_TO_BOTTOM
+        self._widget_order_cache = None
+        self._matrix_cols = 6  # Set by keymap_editor for CLUSTER mode
+
     def set_keys(self, keys, encoders):
         self.common_widgets = []
         self.widgets_for_layout = []
@@ -339,6 +345,9 @@ class KeyboardWidget(QWidget):
 
     def update_layout(self):
         """ Updates self.widgets for the currently active layout """
+
+        # Invalidate widget order cache when layout changes
+        self._widget_order_cache = None
 
         # determine widgets for current layout
         self.place_widgets()
@@ -525,10 +534,68 @@ class KeyboardWidget(QWidget):
         if self.isEnabled():
             self.update_layout()
 
-    def select_next(self):
-        """ Selects next key based on their order in the keymap """
+    def set_serial_mode(self, mode):
+        """Set the serial assignment mode for select_next()."""
+        if self.serial_mode != mode:
+            self.serial_mode = mode
+            self._widget_order_cache = None
 
-        keys_looped = self.widgets + [self.widgets[0]]
+    def _get_ordered_widgets(self):
+        """Get widgets ordered according to serial_mode."""
+        if self._widget_order_cache is not None:
+            return self._widget_order_cache
+
+        if self.serial_mode == SerialMode.TOP_TO_BOTTOM:
+            # (y, x) ordering - Vial default
+            ordered = sorted(self.widgets, key=lambda w: (w.y, w.x))
+        elif self.serial_mode == SerialMode.LEFT_TO_RIGHT:
+            # (x, y) ordering
+            ordered = sorted(self.widgets, key=lambda w: (w.x, w.y))
+        elif self.serial_mode == SerialMode.CLUSTER:
+            # By finger cluster with proper direction order within each cluster
+            # Build set of existing keymap IDs
+            existing_ids = set()
+            id_to_widget = {}
+            for w in self.widgets:
+                if w.desc.row is not None:
+                    keymap_id = w.desc.row * self._matrix_cols + w.desc.col
+                    existing_ids.add(keymap_id)
+                    id_to_widget[keymap_id] = w
+            # Get cluster order for existing keys
+            cluster_order = get_svalboard_cluster_order(existing_ids)
+            ordered = [id_to_widget[kid] for kid in cluster_order]
+            # Add any widgets not in the cluster order (non-matrix keys)
+            for w in self.widgets:
+                if w not in ordered:
+                    ordered.append(w)
+        elif self.serial_mode == SerialMode.DIRECTION:
+            # Svalboard direction ordering from hardcoded list
+            id_to_widget = {}
+            for w in self.widgets:
+                if w.desc.row is not None:
+                    keymap_id = w.desc.row * self._matrix_cols + w.desc.col
+                    id_to_widget[keymap_id] = w
+            ordered = []
+            for keymap_id in SVALBOARD_DIRECTION_ORDER:
+                if keymap_id in id_to_widget:
+                    ordered.append(id_to_widget[keymap_id])
+            # Add any widgets not in the direction order list
+            for w in self.widgets:
+                if w not in ordered:
+                    ordered.append(w)
+        else:
+            ordered = self.widgets
+
+        self._widget_order_cache = ordered
+        return ordered
+
+    def select_next(self):
+        """Selects next key based on serial assignment mode."""
+        ordered = self._get_ordered_widgets()
+        if not ordered:
+            return
+
+        keys_looped = ordered + [ordered[0]]
         for x, key in enumerate(keys_looped):
             if key == self.active_key:
                 self.active_key = keys_looped[x + 1]

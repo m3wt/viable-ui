@@ -11,6 +11,7 @@ import sys
 import json
 
 from main_window import MainWindow
+import storage
 
 
 # http://timlehr.com/python-exception-hooks-with-qt-message-box/
@@ -23,6 +24,14 @@ def set_theme(theme):
     """Called from JavaScript to set the theme before main() is called"""
     global _web_theme
     _web_theme = theme
+
+def init_storage(settings_json):
+    """Called from JavaScript to initialize storage with localStorage values."""
+    try:
+        settings = json.loads(settings_json)
+    except (json.JSONDecodeError, TypeError):
+        settings = {}
+    storage.init(settings)
 
 def show_exception_box(log_msg):
     if QtWidgets.QApplication.instance() is not None:

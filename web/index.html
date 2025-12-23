@@ -315,7 +315,13 @@
 
             btn.value = "Starting up....";
             var theme = localStorage.getItem("theme") || "Dark";
-            PThread.runningWorkers[0].postMessage({ cmd: "py", payload: "import webmain;webmain.set_theme('" + theme + "');webmain.main(qtApp)" });
+            // Gather all persisted settings for storage.py
+            var settings = {
+                theme: theme,
+                serial_mode: localStorage.getItem("serial_mode") || "TOP_TO_BOTTOM"
+            };
+            var settingsJson = JSON.stringify(settings);
+            PThread.runningWorkers[0].postMessage({ cmd: "py", payload: "import webmain;webmain.init_storage('" + settingsJson.replace(/'/g, "\\'") + "');webmain.set_theme('" + theme + "');webmain.main(qtApp)" });
 
             g_animation = setInterval(update_animation, 500);
             g_animation_counter = 0;
