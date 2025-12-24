@@ -32,7 +32,7 @@ class AltRepeatKeyEntryUI(QObject):
         # Row 0: Headers
         col = 0
         self.index_label = QLabel()
-        self.index_label.setStyleSheet("font-size: 9px; color: palette(mid);")
+        self.index_label.setStyleSheet("font-size: 9px; color: palette(text);")
         self.index_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)
         self.update_index_label()
         self.container.addWidget(self.index_label, 0, col)
@@ -48,7 +48,7 @@ class AltRepeatKeyEntryUI(QObject):
         ]
         for label_text, tooltip in key_tooltips:
             lbl = QLabel(label_text)
-            lbl.setStyleSheet("font-size: 9px; color: palette(mid);")
+            lbl.setStyleSheet("font-size: 9px; color: palette(text);")
             lbl.setAlignment(Qt.AlignCenter)
             lbl.setToolTip(tooltip)
             self.container.addWidget(lbl, 0, col)
@@ -67,7 +67,7 @@ class AltRepeatKeyEntryUI(QObject):
         ]
         for abbrev, tooltip in mod_tooltips:
             lbl = QLabel(abbrev)
-            lbl.setStyleSheet("font-size: 9px; color: palette(mid);")
+            lbl.setStyleSheet("font-size: 9px; color: palette(text);")
             lbl.setAlignment(Qt.AlignCenter)
             lbl.setToolTip(tooltip)
             self.container.addWidget(lbl, 0, col)
@@ -81,7 +81,7 @@ class AltRepeatKeyEntryUI(QObject):
         ]
         for abbrev, tooltip in opt_tooltips:
             lbl = QLabel(abbrev)
-            lbl.setStyleSheet("font-size: 9px; color: palette(mid);")
+            lbl.setStyleSheet("font-size: 9px; color: palette(text);")
             lbl.setAlignment(Qt.AlignCenter)
             lbl.setToolTip(tooltip)
             self.container.addWidget(lbl, 0, col)

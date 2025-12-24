@@ -33,7 +33,7 @@ class ComboEntryUI(QObject):
 
         # Small superscript-style index number
         self.index_label = QLabel()
-        self.index_label.setStyleSheet("font-size: 9px; color: #666; min-width: 20px;")
+        self.index_label.setStyleSheet("font-size: 9px; color: palette(text); min-width: 20px;")
         self.index_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
         self.update_index_label()
         self.container.addWidget(self.index_label)
@@ -48,7 +48,7 @@ class ComboEntryUI(QObject):
 
         # Arrow
         arrow = QLabel("\u2192")  # →
-        arrow.setStyleSheet("font-size: 16px; color: #888;")
+        arrow.setStyleSheet("font-size: 16px; color: palette(text);")
         arrow.setAlignment(Qt.AlignCenter)
         self.container.addWidget(arrow)
 

@@ -388,9 +388,9 @@ class KeyboardWidget(QWidget):
         border_pen.setColor(palette.color(QPalette.Mid))
         border_pen.setWidthF(2.0)
 
-        # Border pen for selected keys (white in dark themes - always distinct from colored accents)
+        # Border pen for selected keys (uses Highlight/selection color)
         active_pen = qp.pen()
-        active_pen.setColor(palette.color(QPalette.ButtonText))
+        active_pen.setColor(palette.color(QPalette.Highlight))
         active_pen.setWidthF(2.0)
 
         # Background brush for normal keys
@@ -432,6 +432,11 @@ class KeyboardWidget(QWidget):
         tint_color = QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 50)
         modified_tint_brush = QBrush(tint_color, Qt.SolidPattern)
 
+        # Active/selected key tint brush (highlight color at ~20% opacity)
+        highlight_color = palette.color(QPalette.Highlight)
+        highlight_tint_color = QColor(highlight_color.red(), highlight_color.green(), highlight_color.blue(), 50)
+        highlight_tint_brush = QBrush(highlight_tint_color, Qt.SolidPattern)
+
         # Modified key border
         modified_pen = QPen(accent_color)
         modified_pen.setWidthF(2.0)
@@ -467,10 +472,11 @@ class KeyboardWidget(QWidget):
                 brush = background_brush
 
             # Draw keycap: flat style with border
-            if is_modified:
-                qp.setPen(modified_pen)
-            elif active:
+            # Active border takes priority - modified state shown via tint overlay
+            if active:
                 qp.setPen(active_pen)
+            elif is_modified:
+                qp.setPen(modified_pen)
             else:
                 qp.setPen(border_pen)
             qp.setBrush(brush)
@@ -484,7 +490,8 @@ class KeyboardWidget(QWidget):
                 qp.drawText(key.nonmask_rect, Qt.AlignCenter, key.text)
 
                 # Draw the inner key area
-                qp.setPen(active_pen if self.active_key == key and self.active_mask else border_pen)
+                mask_active = self.active_key == key and self.active_mask
+                qp.setPen(active_pen if mask_active else border_pen)
                 qp.setBrush(mask_brush)
                 qp.drawRoundedRect(key.mask_rect, key.corner, key.corner)
 
@@ -522,8 +529,12 @@ class KeyboardWidget(QWidget):
                 else:
                     qp.drawText(key.rect, Qt.AlignCenter, key.text)
 
-            # Draw tint overlay on modified keys (active keys use border only)
-            if is_modified:
+            # Draw tint overlay (active takes priority over modified)
+            if active:
+                qp.setPen(Qt.NoPen)
+                qp.setBrush(highlight_tint_brush)
+                qp.drawPath(key.background_draw_path)
+            elif is_modified:
                 qp.setPen(Qt.NoPen)
                 qp.setBrush(modified_tint_brush)
                 qp.drawPath(key.background_draw_path)

@@ -46,7 +46,7 @@ class MacroRecorder(BasicEditor):
         self.recording_append = False
 
         self.tabs = TabWidgetWithKeycodes()
-        # Reserve space for highlight border to prevent layout jump (no better option for tab panes)
+        # Reserve space for highlight border to prevent layout jump
         self.tabs.setStyleSheet("QTabWidget::pane { border: 2px solid transparent; }")
 
         self.lbl_memory = QLabel()
@@ -74,7 +74,12 @@ class MacroRecorder(BasicEditor):
             cm.values_restored.disconnect(self._on_values_restored)
         except TypeError:
             pass
+        try:
+            cm.saved.disconnect(self._on_saved)
+        except TypeError:
+            pass
         cm.values_restored.connect(self._on_values_restored)
+        cm.saved.connect(self._on_saved)
 
         for x in range(self.keyboard.macro_count - len(self.macro_tab_w)):
             tab = MacroTab(self, self.recorder is not None)
@@ -219,3 +224,7 @@ class MacroRecorder(BasicEditor):
                 self.deserialize(self.keyboard.macro)
                 self.update_tab_titles()
                 return
+
+    def _on_saved(self):
+        """Refresh highlighting after changes are pushed."""
+        self.update_tab_titles()

@@ -36,7 +36,7 @@ themes = [
         QPalette.ButtonText: "#ffffff",
         QPalette.BrightText: "#ff0000",
         QPalette.Link: "#f7a948",
-        QPalette.Highlight: "#bababa",
+        QPalette.Highlight: "#58A6FF",  # electric blue
         QPalette.HighlightedText: "#232323",
         QPalette.Mid: "#808080",  # checkbox/border color
         (QPalette.Active, QPalette.Button): "#353535",

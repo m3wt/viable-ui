@@ -159,6 +159,8 @@ class ProtocolMacro(BaseProtocol):
             # ensuring we only get macro_count strings after we split by NUL
             macros = self.macro.split(b"\x00") + [b""] * self.macro_count
             self.macro = b"\x00".join(macros[:self.macro_count]) + b"\x00"
+        # Track what's actually on the device for commit comparison
+        self._committed_macro = self.macro
 
     def reload_macros(self):
         """ Loads macro information from the keyboard """
@@ -188,23 +190,26 @@ class ProtocolMacro(BaseProtocol):
         """Send macro data to the device (used by ChangeManager).
 
         Only writes chunks that have changed to reduce flash wear.
+        Compares against _committed_macro (device state) not self.macro (local state).
         """
         if len(data) > self.macro_memory:
             return False
 
-        old_data = self.macro if hasattr(self, 'macro') else b''
+        # Compare against committed (device) state, not local state
+        old_data = self._committed_macro if hasattr(self, '_committed_macro') else b''
         # Pad old data to same length for comparison
         if len(old_data) < len(data):
             old_data = old_data + b'\x00' * (len(data) - len(old_data))
 
         for x, chunk in enumerate(chunks(data, BUFFER_FETCH_CHUNK)):
             off = x * BUFFER_FETCH_CHUNK
-            # Compare with corresponding chunk in old data
+            # Compare with corresponding chunk in committed data
             old_chunk = old_data[off:off + len(chunk)]
             if chunk != old_chunk:
                 self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
                               retries=20)
         self.macro = data
+        self._committed_macro = data  # Update committed state after successful push
         return True
 
     def save_macro(self):

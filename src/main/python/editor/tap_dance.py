@@ -32,19 +32,19 @@ class TapDanceEntryUI(QObject):
 
         # Row 0: Index and column headers
         self.index_label = QLabel()
-        self.index_label.setStyleSheet("font-size: 9px; color: #666;")
+        self.index_label.setStyleSheet("font-size: 9px; color: palette(text);")
         self.index_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)
         self.update_index_label()
         self.container.addWidget(self.index_label, 0, 0)
 
         for col, label_text in enumerate(["Tap", "Hold", "2xTap", "T+H"]):
             lbl = QLabel(label_text)
-            lbl.setStyleSheet("font-size: 9px; color: #888;")
+            lbl.setStyleSheet("font-size: 9px; color: palette(text);")
             lbl.setAlignment(Qt.AlignCenter)
             self.container.addWidget(lbl, 0, col + 1)
 
         term_header = QLabel("Term")
-        term_header.setStyleSheet("font-size: 9px; color: #888;")
+        term_header.setStyleSheet("font-size: 9px; color: palette(text);")
         term_header.setAlignment(Qt.AlignCenter)
         self.container.addWidget(term_header, 0, 5)
 

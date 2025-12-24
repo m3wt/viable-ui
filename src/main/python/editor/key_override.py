@@ -194,7 +194,7 @@ class KeyOverrideEntryUI(QObject):
 
         # Index label
         self.index_label = QLabel(str(idx + 1))
-        self.index_label.setStyleSheet("font-size: 9px; color: palette(mid);")
+        self.index_label.setStyleSheet("font-size: 9px; color: palette(text);")
         self.index_label.setFixedWidth(20)
         self.index_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         row1.addWidget(self.index_label)
@@ -213,7 +213,7 @@ class KeyOverrideEntryUI(QObject):
 
         # Arrow
         arrow = QLabel("→")
-        arrow.setStyleSheet("font-size: 14px; color: palette(mid);")
+        arrow.setStyleSheet("font-size: 14px; color: palette(text);")
         row1.addWidget(arrow)
 
         # Replacement key
@@ -273,7 +273,7 @@ class KeyOverrideEntryUI(QObject):
                         "Right Ctrl", "Right Shift", "Right Alt", "Right GUI"]
         for col, (name, tooltip) in enumerate(zip(mod_names, mod_tooltips)):
             lbl = QLabel(name)
-            lbl.setStyleSheet("font-size: 9px; color: palette(mid);")
+            lbl.setStyleSheet("font-size: 9px; color: palette(text);")
             lbl.setAlignment(Qt.AlignCenter)
             lbl.setToolTip(tooltip)
             mod_grid.addWidget(lbl, 0, col + 1)
@@ -292,7 +292,7 @@ class KeyOverrideEntryUI(QObject):
 
             # Row label
             row_label = QLabel(label_text)
-            row_label.setStyleSheet("font-size: 9px; color: palette(mid);")
+            row_label.setStyleSheet("font-size: 9px; color: palette(text);")
             row_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             row_label.setToolTip(row_tooltip)
             mod_grid.addWidget(row_label, grid_row, 0)
