@@ -22,30 +22,40 @@ def cached_property(func):
     return wrapper
 
 
-def is_frozen():
-    """Check if running as a frozen executable (Nuitka or PyInstaller)."""
-    # Nuitka sets __nuitka_binary_dir, PyInstaller sets sys.frozen
-    return hasattr(sys, '__nuitka_binary_dir') or getattr(sys, 'frozen', False)
+def _get_exe_dir():
+    """Get directory containing the executable."""
+    return os.path.dirname(sys.executable)
 
 
-def _get_application_path():
-    """Get the path to the application directory."""
-    if is_frozen():
-        # Running as compiled executable
-        return os.path.dirname(sys.executable)
-    else:
-        # Running as script - resources are in src/main/resources/base
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.normpath(os.path.join(script_dir, '..', 'resources', 'base'))
+def _get_script_dir():
+    """Get directory containing this script."""
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def _get_build_settings_path():
     """Get the path to build settings."""
-    if is_frozen():
-        return os.path.join(os.path.dirname(sys.executable), 'build_settings.json')
-    else:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.normpath(os.path.join(script_dir, '..', '..', 'build', 'settings', 'base.json'))
+    # Check frozen location first (next to executable)
+    frozen_path = os.path.join(_get_exe_dir(), 'build_settings.json')
+    if os.path.exists(frozen_path):
+        return frozen_path
+    # Development path
+    return os.path.normpath(os.path.join(_get_script_dir(), '..', '..', 'build', 'settings', 'base.json'))
+
+
+def _get_application_path():
+    """Get the path to the application directory (resources)."""
+    # Check frozen location first (resources next to executable)
+    exe_dir = _get_exe_dir()
+    # In frozen mode, resources are copied to exe directory
+    if os.path.exists(os.path.join(exe_dir, 'build_settings.json')):
+        return exe_dir
+    # Development path
+    return os.path.normpath(os.path.join(_get_script_dir(), '..', 'resources', 'base'))
+
+
+def is_frozen():
+    """Check if running as a frozen executable."""
+    return os.path.exists(os.path.join(_get_exe_dir(), 'build_settings.json'))
 
 
 class ApplicationContext:
