@@ -25,8 +25,12 @@ def cached_property(func):
 def _get_dist_dir():
     """Get the distribution directory (where resources are located)."""
     try:
-        # Nuitka: __compiled__.containing_dir handles all platforms including macOS .app
-        return __compiled__.containing_dir
+        # Nuitka: try containing_dir first, fall back to executable directory
+        dist_dir = __compiled__.containing_dir
+        if not os.path.exists(os.path.join(dist_dir, 'build_settings.json')):
+            # containing_dir can be wrong in some cases, use executable dir
+            dist_dir = os.path.dirname(sys.executable)
+        return dist_dir
     except NameError:
         # Development: resources are in src/main/resources/base
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -36,8 +40,8 @@ def _get_dist_dir():
 def _get_build_settings_path():
     """Get the path to build settings."""
     try:
-        # Nuitka: build_settings.json is in the dist directory
-        return os.path.join(__compiled__.containing_dir, 'build_settings.json')
+        __compiled__  # Check if we're compiled
+        return os.path.join(_get_dist_dir(), 'build_settings.json')
     except NameError:
         # Development path
         script_dir = os.path.dirname(os.path.abspath(__file__))
