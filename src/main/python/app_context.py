@@ -23,8 +23,9 @@ def cached_property(func):
 
 
 def is_frozen():
-    """Check if running as a frozen executable."""
-    return getattr(sys, 'frozen', False)
+    """Check if running as a frozen executable (Nuitka or PyInstaller)."""
+    # Nuitka sets __nuitka_binary_dir, PyInstaller sets sys.frozen
+    return hasattr(sys, '__nuitka_binary_dir') or getattr(sys, 'frozen', False)
 
 
 def _get_application_path():
