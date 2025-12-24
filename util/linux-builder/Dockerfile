@@ -1,17 +1,29 @@
 # DEPRECATED: Use Dockerfile.base instead for incremental builds
 # This file is kept for backwards compatibility
 
-FROM ubuntu:18.04
+FROM ubuntu:22.04
 
-RUN apt-get update && apt-get -y upgrade
-RUN apt-get install -y libusb-1.0-0-dev libudev-dev ruby ruby-dev rubygems build-essential desktop-file-utils wget unzip zlib1g-dev liblzma-dev libssl-dev git imagemagick file libfuse2
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN wget https://github.com/AppImage/pkg2appimage/archive/38603d92359a48189c35debad9005e8e902e6070.zip && \
-    unzip *.zip && \
-    gem install dotenv -v 2.8.1 && \
-    gem install --no-document fpm && \
-    fpm --version
+RUN apt-get update && apt-get -y upgrade && \
+    apt-get install -y \
+    python3 python3-pip python3-venv \
+    libusb-1.0-0-dev libudev-dev \
+    build-essential patchelf ccache \
+    wget file libfuse2 \
+    libxcb-cursor0 libxcb-icccm4 libxcb-util1 libxcb-image0 \
+    libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-render0 \
+    libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
+    libxcb1 libxcb-glx0 libxkbcommon0 libxkbcommon-x11-0 \
+    libx11-6 libx11-xcb1 libxau6 libxdmcp6 \
+    libglib2.0-0 libegl1 libgl1 zlib1g libbsd0
+
+RUN wget -O /usr/local/bin/appimagetool \
+    https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage && \
+    chmod +x /usr/local/bin/appimagetool && \
+    cd /usr/local/bin && ./appimagetool --appimage-extract && \
+    mv squashfs-root appimagetool-extracted && \
+    rm appimagetool && \
+    ln -s /usr/local/bin/appimagetool-extracted/AppRun /usr/local/bin/appimagetool
 
 COPY . /vial-gui
-
-RUN /vial-gui/util/setup_python36.sh

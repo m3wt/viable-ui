@@ -115,7 +115,22 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libusb-1.0-0-dev libudev-dev patchelf
+        sudo apt-get install -y libusb-1.0-0-dev libudev-dev patchelf libfuse2
+
+    - name: Install AppImage tools and xcb dependencies
+      run: |
+        sudo apt-get install -y \
+          libxcb-cursor0 libxcb-icccm4 libxcb-util1 libxcb-image0 \
+          libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-render0 \
+          libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
+          libxcb1 libxcb-glx0 libxkbcommon0 libxkbcommon-x11-0 \
+          libx11-6 libx11-xcb1 libxau6 libxdmcp6 \
+          libglib2.0-0 libegl1 libgl1 zlib1g libbsd0
+        wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+        chmod +x appimagetool
+        ./appimagetool --appimage-extract
+        sudo mv squashfs-root /opt/appimagetool
+        sudo ln -s /opt/appimagetool/AppRun /usr/local/bin/appimagetool
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -143,8 +158,74 @@ jobs:
           --remove-output \
           src/main/python/main.py
 
+    - name: Create AppImage
+      run: |
+        APPDIR=Vial.AppDir
+        mkdir -p $APPDIR/usr/bin
+        mkdir -p $APPDIR/usr/lib
+        mkdir -p $APPDIR/usr/share/icons/hicolor/256x256/apps
+        mkdir -p $APPDIR/usr/share/applications
+
+        # Copy Nuitka output
+        cp -a build-nuitka/output/main.dist/* $APPDIR/usr/bin/
+
+        # Bundle system libraries for portability
+        copy_lib() {
+          local lib="$1"
+          for path in /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu; do
+            if [ -f "$path/$lib" ]; then
+              cp -L "$path/$lib" "$APPDIR/usr/lib/"
+              return 0
+            fi
+          done
+          return 1
+        }
+
+        # XCB and X11 libraries
+        for lib in libxcb-cursor.so.0 libxcb-icccm.so.4 libxcb-util.so.1 \
+                   libxcb-image.so.0 libxcb-keysyms.so.1 libxcb-randr.so.0 \
+                   libxcb-render-util.so.0 libxcb-render.so.0 libxcb-shape.so.0 \
+                   libxcb-shm.so.0 libxcb-sync.so.1 libxcb-xfixes.so.0 \
+                   libxcb-xkb.so.1 libxcb.so.1 libxcb-glx.so.0 \
+                   libxkbcommon.so.0 libxkbcommon-x11.so.0 \
+                   libX11.so.6 libX11-xcb.so.1 libXau.so.6 libXdmcp.so.6; do
+          copy_lib "$lib"
+        done
+
+        # Additional required libraries
+        for lib in libzstd.so.1 libz.so.1 libbsd.so.0 libmd.so.0; do
+          copy_lib "$lib"
+        done
+
+        cp src/main/icons/linux/256.png $APPDIR/usr/share/icons/hicolor/256x256/apps/vial.png
+        cp src/main/icons/linux/256.png $APPDIR/vial.png
+
+        cat > $APPDIR/vial.desktop << 'EOF'
+        [Desktop Entry]
+        Type=Application
+        Name=Vial
+        Comment=Configure your Vial-enabled keyboard
+        Exec=Vial
+        Icon=vial
+        Categories=Utility;Settings;HardwareSettings;
+        EOF
+        sed -i 's/^        //' $APPDIR/vial.desktop
+        cp $APPDIR/vial.desktop $APPDIR/usr/share/applications/
+
+        cat > $APPDIR/AppRun << 'EOF'
+        #!/bin/sh
+        HERE=$(dirname $(readlink -f "${0}"))
+        export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/bin:${LD_LIBRARY_PATH}"
+        export QT_QPA_PLATFORM=xcb
+        exec "${HERE}/usr/bin/Vial" "$@"
+        EOF
+        sed -i 's/^        //' $APPDIR/AppRun
+        chmod +x $APPDIR/AppRun
+
+        ARCH=x86_64 appimagetool $APPDIR Vial-x86_64.AppImage
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: Vial-Linux
-        path: build-nuitka/output/main.dist/
+        path: Vial-x86_64.AppImage
