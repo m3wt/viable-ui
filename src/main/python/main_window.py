@@ -151,6 +151,7 @@ class MainWindow(QMainWindow):
         self.tray_icon = None
         self.tray_layer_icons = {}
         self.tray_current_layer = -1
+        self.tray_icon_enabled = self.settings.value("tray_icon_enabled", True, bool)
         if sys.platform != "emscripten" and QSystemTrayIcon.isSystemTrayAvailable():
             self.tray_icon = QSystemTrayIcon(self)
             self._init_layer_icons()
@@ -226,6 +227,11 @@ class MainWindow(QMainWindow):
             file_menu.addAction(sideload_json_act)
             file_menu.addAction(download_via_stack_act)
             file_menu.addAction(load_dummy_act)
+            if self.tray_icon is not None:
+                file_menu.addSeparator()
+                self.tray_icon_act = QAction(self._tray_icon_label(), self)
+                self.tray_icon_act.triggered.connect(self.toggle_tray_icon)
+                file_menu.addAction(self.tray_icon_act)
             file_menu.addSeparator()
             file_menu.addAction(exit_act)
 
@@ -804,9 +810,23 @@ class MainWindow(QMainWindow):
             for layer, (h, s, v) in enumerate(keyboard.sval_layer_colors):
                 self.tray_layer_icons[layer] = self._create_layer_icon(layer, h, s, v)
 
+    def _tray_icon_label(self):
+        """Get menu label with checkbox indicator"""
+        check = "☑ " if self.tray_icon_enabled else "☐ "
+        return check + tr("Menu", "Show Tray Icon")
+
+    def toggle_tray_icon(self):
+        """Toggle tray icon visibility"""
+        self.tray_icon_enabled = not self.tray_icon_enabled
+        self.settings.setValue("tray_icon_enabled", self.tray_icon_enabled)
+        self.tray_icon_act.setText(self._tray_icon_label())
+        if not self.tray_icon_enabled and self.tray_icon is not None:
+            self.tray_icon.hide()
+            self.tray_current_layer = -1
+
     def _poll_layer(self):
         """Poll the keyboard for current layer and update tray icon"""
-        if self.tray_icon is None:
+        if self.tray_icon is None or not self.tray_icon_enabled:
             return
 
         if not isinstance(self.autorefresh.current_device, VialKeyboard):
