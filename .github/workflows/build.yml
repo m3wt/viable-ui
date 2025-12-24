@@ -84,6 +84,9 @@ jobs:
           --remove-output \
           src/main/python/main.py
 
+    - name: Rename app bundle
+      run: mv build-nuitka/output/main.app build-nuitka/output/Vial.app
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
