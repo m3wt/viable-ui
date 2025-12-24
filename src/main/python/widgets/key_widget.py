@@ -1,4 +1,4 @@
-from PySide6.QtCore import Signal
+from qtpy.QtCore import Signal
 
 from keycodes.keycodes import Keycode
 from any_keycode_dialog import AnyKeycodeDialog

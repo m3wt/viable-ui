@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QTabWidget, QWidget, QScrollArea, QApplication, QVBoxLayout, QHBoxLayout, \
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtWidgets import QTabWidget, QWidget, QScrollArea, QApplication, QVBoxLayout, QHBoxLayout, \
     QPushButton, QLabel, QFrame, QGridLayout, QSizePolicy
-from PySide6.QtGui import QPalette
+from qtpy.QtGui import QPalette
 
 from constants import KEYCODE_BTN_RATIO
 from widgets.display_keyboard import DisplayKeyboard
@@ -523,7 +523,7 @@ class Tab(QScrollArea):
     def showEvent(self, evt):
         super().showEvent(evt)
         # Defer selection to ensure layout is complete
-        from PySide6.QtCore import QTimer
+        from qtpy.QtCore import QTimer
         QTimer.singleShot(0, self.select_alternative)
 
 

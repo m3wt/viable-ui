@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import sys
 
-from PySide6.QtWidgets import QHBoxLayout, QWidget, QLabel
+from qtpy.QtWidgets import QHBoxLayout, QWidget, QLabel
 
 from change_manager import ChangeManager, MacroChange
 from editor.basic_editor import BasicEditor
@@ -106,8 +106,8 @@ class MacroRecorder(BasicEditor):
         any_modified = False
 
         # Get the link color for highlighting
-        from PySide6.QtWidgets import QApplication
-        from PySide6.QtGui import QPalette
+        from qtpy.QtWidgets import QApplication
+        from qtpy.QtGui import QPalette
         link_color = QApplication.palette().color(QPalette.Link)
         default_color = QApplication.palette().color(QPalette.WindowText)
 

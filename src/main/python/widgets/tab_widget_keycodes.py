@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PySide6.QtWidgets import QTabWidget
+from qtpy.QtWidgets import QTabWidget
 
 from tabbed_keycodes import TabbedKeycodes
 

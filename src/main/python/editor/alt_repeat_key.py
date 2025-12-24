@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PySide6.QtCore import Qt, Signal, QObject
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
+from qtpy.QtCore import Qt, Signal, QObject
+from qtpy.QtGui import QFont
+from qtpy.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
                              QLabel, QCheckBox, QScrollArea, QPushButton, QToolTip)
 
 from change_manager import ChangeManager, AltRepeatKeyChange

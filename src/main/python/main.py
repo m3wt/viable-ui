@@ -8,8 +8,8 @@ if ssl.get_default_verify_paths().cafile is None:
 
 import traceback
 
-from PySide6 import QtWidgets, QtCore
-from PySide6.QtCore import Signal
+from qtpy import QtWidgets, QtCore
+from qtpy.QtCore import Signal
 
 from app_context import cached_property, ApplicationContext
 

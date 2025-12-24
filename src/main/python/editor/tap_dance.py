@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PySide6 import QtCore
-from PySide6.QtCore import Signal, QObject, Qt
-from PySide6.QtWidgets import (QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel,
+from qtpy import QtCore
+from qtpy.QtCore import Signal, QObject, Qt
+from qtpy.QtWidgets import (QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QSpinBox, QScrollArea, QGridLayout)
 
 from change_manager import ChangeManager, TapDanceChange

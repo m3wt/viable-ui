@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import keyboard
 
-from PySide6 import QtCore
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
+from qtpy import QtCore
+from qtpy.QtCore import Signal
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
 
 from keycodes.keycodes import Keycode
 from macro.macro_key import KeyUp, KeyDown

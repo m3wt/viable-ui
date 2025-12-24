@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Signal
+from qtpy.QtWidgets import QWidget
+from qtpy.QtCore import Signal
 
 
 class EditorContainer(QWidget):

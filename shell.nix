@@ -3,6 +3,7 @@
 pkgs.mkShell {
   buildInputs = with pkgs; [
     (python312.withPackages (ps: with ps; [
+      qtpy
       pyside6
       hidapi
       keyboard

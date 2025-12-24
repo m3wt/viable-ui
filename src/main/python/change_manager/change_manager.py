@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """ChangeManager singleton for tracking uncommitted changes with undo/redo."""
 from typing import Dict, List, Tuple, Optional, Any
-from PySide6.QtCore import QObject, Signal
+from qtpy.QtCore import QObject, Signal
 
 from .changes import Change
 from .change_group import ChangeGroup

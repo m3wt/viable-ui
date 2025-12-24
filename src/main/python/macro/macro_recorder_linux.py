@@ -2,9 +2,9 @@
 import sys
 import os
 
-from PySide6 import QtCore
-from PySide6.QtCore import Signal, QProcess
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
+from qtpy import QtCore
+from qtpy.QtCore import Signal, QProcess
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
 from app_context import is_frozen
 
 from keycodes.keycodes import Keycode

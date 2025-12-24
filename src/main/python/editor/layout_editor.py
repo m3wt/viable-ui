@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PySide6 import QtCore
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QLabel, QCheckBox, QComboBox, QGridLayout, QWidget, QSizePolicy
+from qtpy import QtCore
+from qtpy.QtCore import Signal
+from qtpy.QtWidgets import QLabel, QCheckBox, QComboBox, QGridLayout, QWidget, QSizePolicy
 
 from editor.basic_editor import BasicEditor
 from widgets.keyboard_widget import KeyboardWidget

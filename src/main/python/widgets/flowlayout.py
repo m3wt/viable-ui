@@ -39,8 +39,8 @@
 #############################################################################
 
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt
-from PySide6.QtWidgets import (QApplication, QLayout, QPushButton, QSizePolicy,
+from qtpy.QtCore import QPoint, QRect, QSize, Qt
+from qtpy.QtWidgets import (QApplication, QLayout, QPushButton, QSizePolicy,
         QWidget)
 
 

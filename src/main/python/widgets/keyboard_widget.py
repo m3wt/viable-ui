@@ -1,8 +1,8 @@
 from collections import defaultdict
 
-from PySide6.QtGui import QPainter, QColor, QPainterPath, QTransform, QBrush, QPolygonF, QPalette, QPen
-from PySide6.QtWidgets import QWidget, QToolTip, QApplication
-from PySide6.QtCore import Qt, QSize, QRect, QPointF, Signal, QEvent, QRectF
+from qtpy.QtGui import QPainter, QColor, QPainterPath, QTransform, QBrush, QPolygonF, QPalette, QPen
+from qtpy.QtWidgets import QWidget, QToolTip, QApplication
+from qtpy.QtCore import Qt, QSize, QRect, QPointF, Signal, QEvent, QRectF
 
 from change_manager import ChangeManager
 from constants import KEY_SIZE_RATIO, KEY_SPACING_RATIO, KEYBOARD_WIDGET_PADDING, \

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLineEdit, QLabel, QSizePolicy
+from qtpy.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLineEdit, QLabel, QSizePolicy
 
 from keycodes.keycodes import Keycode
 from util import tr

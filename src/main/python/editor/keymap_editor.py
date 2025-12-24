@@ -2,10 +2,10 @@
 import json
 import sys
 
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
+from qtpy.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                              QScrollArea, QSizePolicy, QToolButton, QMenu, QApplication,
                              QComboBox)
-from PySide6.QtCore import Qt, Signal, QTimer
+from qtpy.QtCore import Qt, Signal, QTimer
 
 from any_keycode_dialog import AnyKeycodeDialog
 from change_manager import ChangeManager, KeymapChange, EncoderChange

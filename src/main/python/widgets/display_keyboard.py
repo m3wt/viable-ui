@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import json
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QGridLayout, QWidget, QSizePolicy
+from qtpy.QtCore import Signal
+from qtpy.QtWidgets import QGridLayout, QWidget, QSizePolicy
 
 from constants import KEYCODE_BTN_RATIO
 from keycodes.keycodes import Keycode

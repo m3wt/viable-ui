@@ -2,9 +2,9 @@
 import json
 from collections import defaultdict
 
-from PySide6 import QtCore
-from PySide6.QtCore import Signal, QObject
-from PySide6.QtWidgets import QVBoxLayout, QCheckBox, QGridLayout, QHBoxLayout, QLabel, QWidget, QSizePolicy, QTabWidget, QSpinBox, QFrame
+from qtpy import QtCore
+from qtpy.QtCore import Signal, QObject
+from qtpy.QtWidgets import QVBoxLayout, QCheckBox, QGridLayout, QHBoxLayout, QLabel, QWidget, QSizePolicy, QTabWidget, QSpinBox, QFrame
 
 from change_manager import ChangeManager, QmkSettingChange, QmkBitChange
 from editor.basic_editor import BasicEditor
@@ -226,8 +226,8 @@ class QmkSettings(BasicEditor):
     def _update_ui_state(self):
         """Update UI highlights and button states without tracking changes."""
         # Get link color for highlighting
-        from PySide6.QtWidgets import QApplication
-        from PySide6.QtGui import QPalette
+        from qtpy.QtWidgets import QApplication
+        from qtpy.QtGui import QPalette
         link_color = QApplication.palette().color(QPalette.Link)
         default_color = QApplication.palette().color(QPalette.WindowText)
 

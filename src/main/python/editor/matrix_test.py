@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PySide6.QtWidgets import QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QLabel
-from PySide6.QtCore import Qt, QTimer
+from qtpy.QtWidgets import QVBoxLayout, QPushButton, QWidget, QHBoxLayout, QLabel
+from qtpy.QtCore import Qt, QTimer
 
 import math
 

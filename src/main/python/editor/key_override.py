@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import sys
-from PySide6.QtCore import Qt, Signal, QObject
-from PySide6.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
+from qtpy.QtCore import Qt, Signal, QObject
+from qtpy.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
                              QLabel, QCheckBox, QScrollArea, QPushButton, QMenu, QWidgetAction,
                              QToolButton, QFrame)
 

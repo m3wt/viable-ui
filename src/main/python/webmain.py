@@ -3,9 +3,9 @@ import os
 
 import traceback
 
-from PySide6 import QtWidgets, QtCore
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QPalette, QColor
+from qtpy import QtWidgets, QtCore
+from qtpy.QtCore import Signal, Qt
+from qtpy.QtGui import QPalette, QColor
 
 import sys
 import json

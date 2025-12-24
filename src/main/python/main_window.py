@@ -3,9 +3,9 @@ import logging
 import platform
 from json import JSONDecodeError
 
-from PySide6.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, qVersion
-from PySide6.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor, QFont, QAction, QActionGroup
-from PySide6.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, \
+from qtpy.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, qVersion
+from qtpy.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor, QFont, QAction, QActionGroup
+from qtpy.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, \
     QFileDialog, QDialog, QTabWidget, QMessageBox, QLabel, QApplication, QSystemTrayIcon
 
 import json

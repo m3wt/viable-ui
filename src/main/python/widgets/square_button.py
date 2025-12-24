@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QPushButton, QLabel, QHBoxLayout
+from qtpy.QtCore import QSize, Qt
+from qtpy.QtWidgets import QPushButton, QLabel, QHBoxLayout
 
 class SquareButton(QPushButton):
 

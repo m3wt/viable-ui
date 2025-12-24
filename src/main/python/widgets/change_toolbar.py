@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Toolbar for Save/Undo/Redo operations."""
-from PySide6.QtWidgets import QToolBar, QLabel, QWidget, QSizePolicy
-from PySide6.QtGui import QKeySequence, QAction
-from PySide6.QtCore import Qt
+from qtpy.QtWidgets import QToolBar, QLabel, QWidget, QSizePolicy
+from qtpy.QtGui import QKeySequence, QAction
+from qtpy.QtCore import Qt
 
 from change_manager import ChangeManager
 
