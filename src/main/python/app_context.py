@@ -22,40 +22,34 @@ def cached_property(func):
     return wrapper
 
 
-def _get_exe_dir():
-    """Get directory containing the executable."""
-    return os.path.dirname(sys.executable)
-
-
-def _get_script_dir():
-    """Get directory containing this script."""
-    return os.path.dirname(os.path.abspath(__file__))
+def _get_dist_dir():
+    """Get the distribution directory (where resources are located)."""
+    try:
+        # Nuitka: __compiled__.containing_dir handles all platforms including macOS .app
+        return __compiled__.containing_dir
+    except NameError:
+        # Development: resources are in src/main/resources/base
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.normpath(os.path.join(script_dir, '..', 'resources', 'base'))
 
 
 def _get_build_settings_path():
     """Get the path to build settings."""
-    # Check frozen location first (next to executable)
-    frozen_path = os.path.join(_get_exe_dir(), 'build_settings.json')
-    if os.path.exists(frozen_path):
-        return frozen_path
-    # Development path
-    return os.path.normpath(os.path.join(_get_script_dir(), '..', '..', 'build', 'settings', 'base.json'))
-
-
-def _get_application_path():
-    """Get the path to the application directory (resources)."""
-    # Check frozen location first (resources next to executable)
-    exe_dir = _get_exe_dir()
-    # In frozen mode, resources are copied to exe directory
-    if os.path.exists(os.path.join(exe_dir, 'build_settings.json')):
-        return exe_dir
-    # Development path
-    return os.path.normpath(os.path.join(_get_script_dir(), '..', 'resources', 'base'))
+    try:
+        # Nuitka: build_settings.json is in the dist directory
+        return os.path.join(__compiled__.containing_dir, 'build_settings.json')
+    except NameError:
+        # Development path
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.normpath(os.path.join(script_dir, '..', '..', 'build', 'settings', 'base.json'))
 
 
 def is_frozen():
-    """Check if running as a frozen executable."""
-    return os.path.exists(os.path.join(_get_exe_dir(), 'build_settings.json'))
+    """Check if running as a Nuitka compiled executable."""
+    try:
+        return bool(__compiled__)
+    except NameError:
+        return False
 
 
 class ApplicationContext:
@@ -80,4 +74,4 @@ class ApplicationContext:
 
     def get_resource(self, name):
         """Get the path to a resource file."""
-        return os.path.join(_get_application_path(), name)
+        return os.path.join(_get_dist_dir(), name)
