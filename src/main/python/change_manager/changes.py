@@ -176,27 +176,40 @@ class AltRepeatKeyChange(Change):
 
 
 class MacroChange(Change):
-    """Change to macro data (all macros as a unit)."""
+    """Change to a single macro."""
 
-    def __init__(self, old_data: bytes, new_data: bytes):
-        self.old_value = old_data
-        self.new_value = new_data
+    def __init__(self, index: int, old_serialized: bytes, new_serialized: bytes):
+        self.index = index
+        self.old_value = old_serialized
+        self.new_value = new_serialized
 
     def key(self) -> Tuple:
-        return ('macro',)
+        return ('macro', self.index)
 
     def apply(self, keyboard) -> bool:
-        return keyboard._commit_macro(self.new_value)
+        # Get current macros, update this one, send all
+        macros = keyboard.macro.split(b'\x00')
+        # Ensure list is long enough
+        while len(macros) <= self.index:
+            macros.append(b'')
+        macros[self.index] = self.new_value
+        data = b'\x00'.join(macros[:keyboard.macro_count]) + b'\x00'
+        return keyboard._commit_macro(data)
 
     def revert(self, keyboard) -> bool:
-        return keyboard._commit_macro(self.old_value)
+        macros = keyboard.macro.split(b'\x00')
+        while len(macros) <= self.index:
+            macros.append(b'')
+        macros[self.index] = self.old_value
+        data = b'\x00'.join(macros[:keyboard.macro_count]) + b'\x00'
+        return keyboard._commit_macro(data)
 
     def __repr__(self):
-        return f"MacroChange({len(self.old_value)} -> {len(self.new_value)} bytes)"
+        return f"MacroChange(index={self.index}, {len(self.old_value)}->{len(self.new_value)} bytes)"
 
 
 class QmkSettingChange(Change):
-    """Change to a QMK setting."""
+    """Change to a QMK integer setting (non-bitfield)."""
 
     def __init__(self, qsid: int, old_value: int, new_value: int):
         self.qsid = qsid
@@ -216,24 +229,64 @@ class QmkSettingChange(Change):
         return f"QmkSettingChange(qsid={self.qsid}, {self.old_value}->{self.new_value})"
 
 
-class SvalboardSettingsChange(Change):
-    """Change to Svalboard settings (all settings as a unit)."""
+class QmkBitChange(Change):
+    """Change to a single bit in a QMK bitfield setting."""
 
-    def __init__(self, old_settings: dict, new_settings: dict):
-        self.old_value = old_settings
-        self.new_value = new_settings
+    def __init__(self, qsid: int, bit: int, old_bit: int, new_bit: int):
+        self.qsid = qsid
+        self.bit = bit
+        self.old_value = old_bit  # 0 or 1
+        self.new_value = new_bit  # 0 or 1
 
     def key(self) -> Tuple:
-        return ('svalboard_settings',)
+        return ('qmk_setting_bit', self.qsid, self.bit)
 
     def apply(self, keyboard) -> bool:
-        return keyboard._commit_svalboard_settings(self.new_value)
+        current = keyboard.settings.get(self.qsid, 0)
+        if self.new_value:
+            current |= (1 << self.bit)
+        else:
+            current &= ~(1 << self.bit)
+        keyboard.settings[self.qsid] = current
+        return keyboard._commit_qmk_setting(self.qsid, current)
 
     def revert(self, keyboard) -> bool:
-        return keyboard._commit_svalboard_settings(self.old_value)
+        current = keyboard.settings.get(self.qsid, 0)
+        if self.old_value:
+            current |= (1 << self.bit)
+        else:
+            current &= ~(1 << self.bit)
+        keyboard.settings[self.qsid] = current
+        return keyboard._commit_qmk_setting(self.qsid, current)
 
     def __repr__(self):
-        return f"SvalboardSettingsChange()"
+        return f"QmkBitChange(qsid={self.qsid}, bit={self.bit}, {self.old_value}->{self.new_value})"
+
+
+class SvalboardSettingChange(Change):
+    """Change to a single Svalboard setting."""
+
+    def __init__(self, setting_name: str, old_value, new_value):
+        self.setting_name = setting_name
+        self.old_value = old_value
+        self.new_value = new_value
+
+    def key(self) -> Tuple:
+        return ('svalboard', self.setting_name)
+
+    def apply(self, keyboard) -> bool:
+        # Get current settings, update this one, send all
+        settings = keyboard.sval_settings.copy()
+        settings[self.setting_name] = self.new_value
+        return keyboard._commit_svalboard_settings(settings)
+
+    def revert(self, keyboard) -> bool:
+        settings = keyboard.sval_settings.copy()
+        settings[self.setting_name] = self.old_value
+        return keyboard._commit_svalboard_settings(settings)
+
+    def __repr__(self):
+        return f"SvalboardSettingChange({self.setting_name}, {self.old_value}->{self.new_value})"
 
 
 class SvalboardLayerColorChange(Change):

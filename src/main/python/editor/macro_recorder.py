@@ -1,19 +1,15 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import sys
 
-from PyQt5.QtWidgets import QPushButton, QHBoxLayout, QWidget, QLabel
+from PyQt5.QtWidgets import QHBoxLayout, QWidget, QLabel
 
 from change_manager import ChangeManager, MacroChange
 from editor.basic_editor import BasicEditor
-from keycodes.keycodes import recreate_keyboard_keycodes
 from macro.macro_action import ActionText, ActionTap, ActionDown, ActionUp
 from macro.macro_action_ui import ui_action
 from macro.macro_key import KeyString, KeyDown, KeyUp, KeyTap
 from macro.macro_optimizer import macro_optimize
 from macro.macro_tab import MacroTab
-from tabbed_keycodes import TabbedKeycodes
-from unlocker import Unlocker
-from util import tr
 from vial_device import VialKeyboard
 from widgets.tab_widget_keycodes import TabWidgetWithKeycodes
 
@@ -25,7 +21,6 @@ class MacroRecorder(BasicEditor):
 
         self.keyboard = None
         self.suppress_change = False
-        self.committed_macro = None  # Track committed state for per-macro comparison
 
         self.keystrokes = []
         self.macro_tabs = []
@@ -79,17 +74,7 @@ class MacroRecorder(BasicEditor):
             cm.values_restored.disconnect(self._on_values_restored)
         except TypeError:
             pass
-        try:
-            cm.saved.disconnect(self._on_saved)
-        except TypeError:
-            pass
         cm.values_restored.connect(self._on_values_restored)
-        cm.saved.connect(self._on_saved)
-        try:
-            cm.auto_commit_changed.disconnect(self._on_auto_commit_changed)
-        except TypeError:
-            pass
-        cm.auto_commit_changed.connect(self._on_auto_commit_changed)
 
         for x in range(self.keyboard.macro_count - len(self.macro_tab_w)):
             tab = MacroTab(self, self.recorder is not None)
@@ -108,19 +93,11 @@ class MacroRecorder(BasicEditor):
             self.tabs.addTab(w, "")
 
         # deserialize macros that came from keyboard
-        self.committed_macro = self.keyboard.macro  # Store committed state
-        # Normalize committed data by round-tripping through deserialize/serialize
-        # This ensures comparison is consistent (raw data may differ from re-serialized)
-        self._committed_macros_serialized = []
-        macros = self.keyboard.macros_deserialize(self.keyboard.macro)
-        for macro in macros:
-            self._committed_macros_serialized.append(self.keyboard.macro_serialize(macro))
         self.deserialize(self.keyboard.macro)
 
         self.on_change()
 
     def update_tab_titles(self):
-        # Compare individual macros against committed state (using normalized serialized data)
         any_modified = False
 
         # Get the link color for highlighting
@@ -129,27 +106,16 @@ class MacroRecorder(BasicEditor):
         link_color = QApplication.palette().color(QPalette.Link)
         default_color = QApplication.palette().color(QPalette.WindowText)
 
-        # In auto_commit mode, no highlighting (changes are immediately committed)
         cm = ChangeManager.instance()
-        if cm.auto_commit:
-            for x in range(self.keyboard.macro_count):
-                self.tabs.tabBar().setTabTextColor(x, default_color)
-                self.tabs.setTabText(x, "M{}".format(x))
-            self.tabs.tabBar().update()
-            self.tabs.setStyleSheet("QTabWidget::pane { border: 2px solid transparent; }")
-            return
 
-        for x, tab in enumerate(self.macro_tabs[:self.keyboard.macro_count]):
-            current_serialized = self.keyboard.macro_serialize(tab.actions())
-            committed_serialized = self._committed_macros_serialized[x] if x < len(self._committed_macros_serialized) else b""
-
-            is_modified = current_serialized != committed_serialized
+        # cm.is_modified() returns False in auto_commit mode
+        for x in range(self.keyboard.macro_count):
+            is_modified = cm.is_modified(('macro', x))
             if is_modified:
                 any_modified = True
                 self.tabs.tabBar().setTabTextColor(x, link_color)
             else:
                 self.tabs.tabBar().setTabTextColor(x, default_color)
-
             self.tabs.setTabText(x, "M{}".format(x))
 
         # Force repaint
@@ -211,11 +177,19 @@ class MacroRecorder(BasicEditor):
         data = self.serialize()
         memory = len(data)
 
-        # Track each edit for undo/redo
-        old_data = self.keyboard.macro
-        if data != old_data and memory <= self.keyboard.macro_memory:
-            change = MacroChange(old_data, data)
-            ChangeManager.instance().add_change(change)
+        if memory <= self.keyboard.macro_memory:
+            # Compare each macro to find which ones changed
+            old_macros = self.keyboard.macro.split(b'\x00')
+            new_macros = data.split(b'\x00')
+            cm = ChangeManager.instance()
+
+            for idx in range(self.keyboard.macro_count):
+                old_macro = old_macros[idx] if idx < len(old_macros) else b''
+                new_macro = new_macros[idx] if idx < len(new_macros) else b''
+                if old_macro != new_macro:
+                    change = MacroChange(idx, old_macro, new_macro)
+                    cm.add_change(change)
+
             # Update local state
             self.keyboard.macro = data
 
@@ -243,29 +217,5 @@ class MacroRecorder(BasicEditor):
         for key in affected_keys:
             if key[0] == 'macro':
                 self.deserialize(self.keyboard.macro)
-                self.on_change()
+                self.update_tab_titles()
                 return
-
-    def _on_saved(self):
-        """Update committed state after global save."""
-        self.committed_macro = self.keyboard.macro
-        # Normalize committed data
-        self._committed_macros_serialized = []
-        macros = self.keyboard.macros_deserialize(self.keyboard.macro)
-        for macro in macros:
-            self._committed_macros_serialized.append(self.keyboard.macro_serialize(macro))
-        # Refresh keycode labels to show updated macro preview text
-        recreate_keyboard_keycodes(self.keyboard)
-        TabbedKeycodes.tray.recreate_keycode_buttons()
-        self.update_tab_titles()
-
-    def _on_auto_commit_changed(self, auto_commit):
-        """Update UI when auto_commit mode changes."""
-        # Always sync committed state - when entering push mode changes become committed,
-        # when leaving push mode the device already has current state
-        self.committed_macro = self.keyboard.macro
-        self._committed_macros_serialized = []
-        macros = self.keyboard.macros_deserialize(self.keyboard.macro)
-        for macro in macros:
-            self._committed_macros_serialized.append(self.keyboard.macro_serialize(macro))
-        self.update_tab_titles()

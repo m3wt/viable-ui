@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (QWidget, QPushButton, QHBoxLayout, QVBoxLayout,
                               QColorDialog, QGroupBox, QScrollArea, QSizePolicy,
                               QFrame)
 
-from change_manager import ChangeManager, SvalboardSettingsChange, SvalboardLayerColorChange
+from change_manager import ChangeManager, SvalboardSettingChange, SvalboardLayerColorChange
 from editor.basic_editor import BasicEditor
 from widgets.clickable_label import ClickableLabel
 from util import tr
@@ -23,7 +23,6 @@ class SvalboardEditor(BasicEditor):
         # Pending changes (for deferred save)
         self.pending_layer_colors = None
         self.pending_settings = None
-        self.committed_settings = None  # Track committed state for highlighting
 
         # Create scrollable container
         scroll = QScrollArea()
@@ -222,23 +221,13 @@ class SvalboardEditor(BasicEditor):
         super().rebuild(device)
         if self.valid():
             self.keyboard = device.keyboard
-            # Connect to ChangeManager signals
+            # Connect to ChangeManager signals for undo/redo
             cm = ChangeManager.instance()
             try:
                 cm.values_restored.disconnect(self._on_values_restored)
             except TypeError:
                 pass
-            try:
-                cm.saved.disconnect(self._on_saved)
-            except TypeError:
-                pass
             cm.values_restored.connect(self._on_values_restored)
-            cm.saved.connect(self._on_saved)
-            try:
-                cm.auto_commit_changed.disconnect(self._on_auto_commit_changed)
-            except TypeError:
-                pass
-            cm.auto_commit_changed.connect(self._on_auto_commit_changed)
             self._update_layer_visibility()
             self._update_dpi_dropdowns()
             self._update_mh_timeout_dropdown()
@@ -249,12 +238,11 @@ class SvalboardEditor(BasicEditor):
         """Refresh UI when values are restored by undo/redo."""
         needs_refresh = False
         for key in affected_keys:
-            if key[0] in ('svalboard_settings', 'svalboard_layer_color'):
+            if key[0] in ('svalboard', 'svalboard_layer_color'):
                 needs_refresh = True
                 break
         if needs_refresh:
-            # Don't reset committed_settings on undo/redo - preserve original committed state
-            self.update_from_keyboard(reset_committed=False)
+            self.update_from_keyboard()
 
     def _update_dpi_dropdowns(self):
         """Populate DPI dropdowns with values from firmware"""
@@ -303,13 +291,8 @@ class SvalboardEditor(BasicEditor):
             else:
                 frame.hide()
 
-    def update_from_keyboard(self, reset_committed=True):
-        """Load current state from keyboard into widgets.
-
-        Args:
-            reset_committed: If True, also reset committed_settings (for initial load/save).
-                            If False, preserve committed_settings (for undo/redo refresh).
-        """
+    def update_from_keyboard(self):
+        """Load current state from keyboard into widgets."""
         if not self.keyboard:
             return
 
@@ -331,8 +314,6 @@ class SvalboardEditor(BasicEditor):
         if self.keyboard.sval_settings:
             settings = self.keyboard.sval_settings
             self.pending_settings = settings.copy()
-            if reset_committed:
-                self.committed_settings = settings.copy()  # Track committed state
 
             self.left_dpi.setCurrentIndex(settings.get('left_dpi_index', 0))
             self.right_dpi.setCurrentIndex(settings.get('right_dpi_index', 0))
@@ -417,24 +398,29 @@ class SvalboardEditor(BasicEditor):
         if not self.pending_settings:
             return
 
-        old_settings = self.pending_settings.copy()
+        cm = ChangeManager.instance()
 
-        self.pending_settings['left_dpi_index'] = self.left_dpi.currentIndex()
-        self.pending_settings['right_dpi_index'] = self.right_dpi.currentIndex()
-        self.pending_settings['left_scroll'] = self.left_scroll.isChecked()
-        self.pending_settings['right_scroll'] = self.right_scroll.isChecked()
-        self.pending_settings['axis_scroll_lock'] = self.axis_scroll_lock.isChecked()
-        self.pending_settings['natural_scroll'] = self.natural_scroll.isChecked()
-        self.pending_settings['auto_mouse'] = self.auto_mouse.isChecked()
-        self.pending_settings['mh_timer_index'] = self.mh_timeout.currentIndex()
-        self.pending_settings['turbo_scan'] = self.turbo_scan.currentIndex()
+        # Map setting names to current widget values
+        new_values = {
+            'left_dpi_index': self.left_dpi.currentIndex(),
+            'right_dpi_index': self.right_dpi.currentIndex(),
+            'left_scroll': self.left_scroll.isChecked(),
+            'right_scroll': self.right_scroll.isChecked(),
+            'axis_scroll_lock': self.axis_scroll_lock.isChecked(),
+            'natural_scroll': self.natural_scroll.isChecked(),
+            'auto_mouse': self.auto_mouse.isChecked(),
+            'mh_timer_index': self.mh_timeout.currentIndex(),
+            'turbo_scan': self.turbo_scan.currentIndex(),
+        }
 
-        if old_settings != self.pending_settings:
-            # Track change for undo/redo
-            new_settings = self.pending_settings.copy()
-            change = SvalboardSettingsChange(old_settings, new_settings)
-            ChangeManager.instance().add_change(change)
-            self.keyboard.sval_settings = new_settings
+        # Create individual changes for each setting that changed
+        for name, new_value in new_values.items():
+            old_value = self.pending_settings.get(name)
+            if old_value != new_value:
+                change = SvalboardSettingChange(name, old_value, new_value)
+                cm.add_change(change)
+                self.pending_settings[name] = new_value
+                self.keyboard.sval_settings[name] = new_value
 
         self._update_buttons()
 
@@ -455,7 +441,7 @@ class SvalboardEditor(BasicEditor):
 
     def _update_settings_highlights(self):
         """Highlight individual widgets that have uncommitted changes."""
-        if not self.pending_settings or not self.committed_settings:
+        if not self.pending_settings:
             return
 
         frame_highlight = "#setting_frame { border: 2px solid palette(link); }"
@@ -463,18 +449,7 @@ class SvalboardEditor(BasicEditor):
         checkbox_highlight = "border: 2px solid palette(link);"
         checkbox_normal = "border: 2px solid transparent;"
 
-        # In auto_commit mode, no highlighting (changes are immediately committed)
         cm = ChangeManager.instance()
-        if cm.auto_commit:
-            for widget, is_frame in [
-                (self.left_dpi_frame, True), (self.right_dpi_frame, True),
-                (self.left_scroll, False), (self.right_scroll, False),
-                (self.axis_scroll_lock, False), (self.natural_scroll, False),
-                (self.auto_mouse, False), (self.mh_timeout_frame, True),
-                (self.turbo_scan_frame, True),
-            ]:
-                widget.setStyleSheet(frame_normal if is_frame else checkbox_normal)
-            return
 
         # Map settings keys to (widget_or_frame, is_frame)
         widget_map = {
@@ -489,27 +464,12 @@ class SvalboardEditor(BasicEditor):
             'turbo_scan': (self.turbo_scan_frame, True),
         }
 
-        for key, (widget, is_frame) in widget_map.items():
-            current = self.pending_settings.get(key)
-            committed = self.committed_settings.get(key)
-            if current != committed:
+        # cm.is_modified() returns False in auto_commit mode
+        for setting_name, (widget, is_frame) in widget_map.items():
+            if cm.is_modified(('svalboard', setting_name)):
                 widget.setStyleSheet(frame_highlight if is_frame else checkbox_highlight)
             else:
                 widget.setStyleSheet(frame_normal if is_frame else checkbox_normal)
-
-    def _on_saved(self):
-        """Update committed state after global save."""
-        if self.pending_settings:
-            self.committed_settings = self.pending_settings.copy()
-        self._update_buttons()
-
-    def _on_auto_commit_changed(self, auto_commit):
-        """Update UI when auto_commit mode changes."""
-        # Always sync committed state - when entering push mode changes become committed,
-        # when leaving push mode the device already has current state
-        if self.pending_settings:
-            self.committed_settings = self.pending_settings.copy()
-        self._update_buttons()
 
     def save_state(self):
         """Return current state as a dict for saving to file"""
@@ -561,18 +521,16 @@ class SvalboardEditor(BasicEditor):
                         f"background-color: {color.name()}; border: 1px solid gray;"
                     )
 
-        # Restore settings
+        # Restore settings - create individual changes for each setting
         settings = data.get("settings", {})
         if settings and self.pending_settings:
-            old_settings = self.pending_settings.copy()
-            self.pending_settings.update(settings)
-
-            if old_settings != self.pending_settings:
-                # Register change with ChangeManager
-                new_settings = self.pending_settings.copy()
-                change = SvalboardSettingsChange(old_settings, new_settings)
-                cm.add_change(change)
-                self.keyboard.sval_settings = new_settings
+            for name, new_value in settings.items():
+                old_value = self.pending_settings.get(name)
+                if old_value != new_value:
+                    change = SvalboardSettingChange(name, old_value, new_value)
+                    cm.add_change(change)
+                    self.pending_settings[name] = new_value
+                    self.keyboard.sval_settings[name] = new_value
 
             self.left_dpi.setCurrentIndex(settings.get('left_dpi_index', 0))
             self.right_dpi.setCurrentIndex(settings.get('right_dpi_index', 0))
@@ -586,10 +544,8 @@ class SvalboardEditor(BasicEditor):
 
         self._unblock_signals()
 
-        # Push changes to firmware immediately and clear pending state
+        # Push changes to firmware immediately
         if cm.has_pending_changes():
             cm.save()
 
-        # Update committed state to match (no pending changes after load)
-        self.committed_settings = self.pending_settings.copy() if self.pending_settings else {}
         self._update_buttons()

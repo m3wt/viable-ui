@@ -6,10 +6,9 @@ from PyQt5 import QtCore
 from PyQt5.QtCore import pyqtSignal, QObject
 from PyQt5.QtWidgets import QVBoxLayout, QCheckBox, QGridLayout, QHBoxLayout, QLabel, QWidget, QSizePolicy, QTabWidget, QSpinBox, QFrame
 
-from change_manager import ChangeManager, QmkSettingChange
+from change_manager import ChangeManager, QmkSettingChange, QmkBitChange
 from editor.basic_editor import BasicEditor
 from protocol.constants import VIAL_PROTOCOL_QMK_SETTINGS
-from util import tr
 from vial_device import VialKeyboard
 
 
@@ -70,16 +69,13 @@ class BooleanOption(GenericOption):
         self.checkbox.setChecked(checked != 0)
         self.checkbox.blockSignals(False)
 
-    def value(self):
-        checked = int(self.checkbox.isChecked())
-        return checked << self.qsid_bit
+    def bit_value(self):
+        """Return 0 or 1 for this bit."""
+        return int(self.checkbox.isChecked())
 
-    def is_modified(self, current_full, committed_full):
-        """Check if this specific bit changed."""
-        mask = 1 << self.qsid_bit
-        current_bit = current_full & mask
-        committed_bit = committed_full & mask
-        return current_bit != committed_bit
+    def change_key(self):
+        """Return the ChangeManager key for this option."""
+        return ('qmk_setting_bit', self.qsid, self.qsid_bit)
 
     def set_modified(self, modified):
         if modified:
@@ -108,9 +104,9 @@ class IntegerOption(GenericOption):
     def value(self):
         return self.spinbox.value()
 
-    def is_modified(self, current_full, committed_full):
-        """Check if this value changed."""
-        return current_full != committed_full
+    def change_key(self):
+        """Return the ChangeManager key for this option."""
+        return ('qmk_setting', self.qsid)
 
     def set_modified(self, modified):
         if modified:
@@ -124,7 +120,6 @@ class QmkSettings(BasicEditor):
     def __init__(self):
         super().__init__()
         self.keyboard = None
-        self.committed_settings = {}  # Track committed state
 
         self.tabs_widget = QTabWidget()
         self.addWidget(self.tabs_widget)
@@ -194,65 +189,56 @@ class QmkSettings(BasicEditor):
             for field in tab:
                 field.reload(self.keyboard)
 
-        # Store committed state AFTER UI is populated (to account for clamping/normalization)
-        # This ensures comparison uses the same values that the UI can represent
-        self.committed_settings = dict(self.prepare_settings())
-
         # Just update UI state, don't track changes (this is initial load)
         self._update_ui_state()
 
     def on_change(self):
-        qsid_values = self.prepare_settings()
         cm = ChangeManager.instance()
 
-        # Track changes by comparing UI to current keyboard.settings
-        for qsid, new_value in qsid_values.items():
-            old_value = self.keyboard.settings.get(qsid, 0)
-
-            # Only track if UI value actually changed from keyboard state
-            if old_value != new_value:
-                change = QmkSettingChange(qsid, old_value, new_value)
-                cm.add_change(change)
-                self.keyboard.settings[qsid] = new_value
+        # Track changes per-option
+        for tab in self.tabs:
+            for opt in tab:
+                if isinstance(opt, BooleanOption):
+                    # Per-bit changes for boolean options
+                    new_bit = opt.bit_value()
+                    current_full = self.keyboard.settings.get(opt.qsid, 0)
+                    old_bit = (current_full >> opt.qsid_bit) & 1
+                    if old_bit != new_bit:
+                        change = QmkBitChange(opt.qsid, opt.qsid_bit, old_bit, new_bit)
+                        cm.add_change(change)
+                        # Update keyboard state
+                        if new_bit:
+                            self.keyboard.settings[opt.qsid] = current_full | (1 << opt.qsid_bit)
+                        else:
+                            self.keyboard.settings[opt.qsid] = current_full & ~(1 << opt.qsid_bit)
+                elif isinstance(opt, IntegerOption):
+                    # Per-qsid changes for integer options
+                    new_value = opt.value()
+                    old_value = self.keyboard.settings.get(opt.qsid, 0)
+                    if old_value != new_value:
+                        change = QmkSettingChange(opt.qsid, old_value, new_value)
+                        cm.add_change(change)
+                        self.keyboard.settings[opt.qsid] = new_value
 
         # Update visual state
         self._update_ui_state()
 
     def _update_ui_state(self):
         """Update UI highlights and button states without tracking changes."""
-        qsid_values = self.prepare_settings()
-
         # Get link color for highlighting
         from PyQt5.QtWidgets import QApplication
         from PyQt5.QtGui import QPalette
         link_color = QApplication.palette().color(QPalette.Link)
         default_color = QApplication.palette().color(QPalette.WindowText)
 
-        # In auto_commit mode, no highlighting (changes are immediately committed)
         cm = ChangeManager.instance()
-        if cm.auto_commit:
-            for x, tab in enumerate(self.tabs):
-                for opt in tab:
-                    if hasattr(opt, 'set_modified'):
-                        opt.set_modified(False)
-                self.tabs_widget.tabBar().setTabTextColor(x, default_color)
-            self.tabs_widget.tabBar().update()
-            return
 
         # Update tab titles and highlight individual changed widgets
-        any_modified = False
+        # cm.is_modified() returns False in auto_commit mode
         for x, tab in enumerate(self.tabs):
             tab_changed = False
             for opt in tab:
-                # Compare current value to committed value (using option's is_modified for bit-level comparison)
-                current = qsid_values.get(opt.qsid, 0)
-                committed = self.committed_settings.get(opt.qsid, 0)
-
-                # Use option's is_modified method if available (handles bitfields correctly)
-                if hasattr(opt, 'is_modified'):
-                    is_opt_modified = opt.is_modified(current, committed)
-                else:
-                    is_opt_modified = current != committed
+                is_opt_modified = cm.is_modified(opt.change_key())
 
                 # Highlight the specific widget
                 if hasattr(opt, 'set_modified'):
@@ -260,7 +246,6 @@ class QmkSettings(BasicEditor):
 
                 if is_opt_modified:
                     tab_changed = True
-                    any_modified = True
 
             if tab_changed:
                 self.tabs_widget.tabBar().setTabTextColor(x, link_color)
@@ -281,25 +266,15 @@ class QmkSettings(BasicEditor):
                 cm.values_restored.disconnect(self._on_values_restored)
             except TypeError:
                 pass
-            try:
-                cm.saved.disconnect(self._on_saved)
-            except TypeError:
-                pass
             cm.values_restored.connect(self._on_values_restored)
-            cm.saved.connect(self._on_saved)
-            try:
-                cm.auto_commit_changed.disconnect(self._on_auto_commit_changed)
-            except TypeError:
-                pass
-            cm.auto_commit_changed.connect(self._on_auto_commit_changed)
             self.reload_settings()
 
     def _on_values_restored(self, affected_keys):
         """Refresh UI when settings are restored by undo/redo."""
         affected_qsid = None
         for key in affected_keys:
-            if key[0] == 'qmk_setting':
-                affected_qsid = key[1]  # ('qmk_setting', qsid)
+            if key[0] in ('qmk_setting', 'qmk_setting_bit'):
+                affected_qsid = key[1]  # ('qmk_setting', qsid) or ('qmk_setting_bit', qsid, bit)
                 break
 
         if affected_qsid is not None:
@@ -315,26 +290,6 @@ class QmkSettings(BasicEditor):
                     if field.qsid == affected_qsid:
                         self.tabs_widget.setCurrentIndex(tab_idx)
                         return
-
-    def _on_saved(self):
-        """Update committed state after global save."""
-        # Use prepare_settings() to get normalized values matching what UI can represent
-        self.committed_settings = dict(self.prepare_settings())
-        self._update_ui_state()
-
-    def _on_auto_commit_changed(self, auto_commit):
-        """Update UI when auto_commit mode changes."""
-        # Always sync committed state - when entering push mode changes become committed,
-        # when leaving push mode the device already has current state
-        self.committed_settings = dict(self.prepare_settings())
-        self._update_ui_state()
-
-    def prepare_settings(self):
-        qsid_values = defaultdict(int)
-        for tab in self.tabs:
-            for field in tab:
-                qsid_values[field.qsid] |= field.value()
-        return qsid_values
 
     def valid(self):
         return isinstance(self.device, VialKeyboard) and \

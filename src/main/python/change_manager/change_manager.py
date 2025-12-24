@@ -241,7 +241,12 @@ class ChangeManager(QObject):
             _, layer, index, direction = key
             self.keyboard.encoder_layout[(layer, index, direction)] = value
         elif key[0] == 'macro':
-            self.keyboard.macro = value
+            _, index = key
+            macros = self.keyboard.macro.split(b'\x00')
+            while len(macros) <= index:
+                macros.append(b'')
+            macros[index] = value
+            self.keyboard.macro = b'\x00'.join(macros[:self.keyboard.macro_count]) + b'\x00'
         elif key[0] == 'combo':
             _, index = key
             if hasattr(self.keyboard, 'combo_entries') and index < len(self.keyboard.combo_entries):
@@ -262,9 +267,19 @@ class ChangeManager(QObject):
             _, qsid = key
             if hasattr(self.keyboard, 'settings'):
                 self.keyboard.settings[qsid] = value
-        elif key[0] == 'svalboard_settings':
+        elif key[0] == 'qmk_setting_bit':
+            _, qsid, bit = key
+            if hasattr(self.keyboard, 'settings'):
+                current = self.keyboard.settings.get(qsid, 0)
+                if value:  # value is 0 or 1
+                    current |= (1 << bit)
+                else:
+                    current &= ~(1 << bit)
+                self.keyboard.settings[qsid] = current
+        elif key[0] == 'svalboard':
+            _, setting_name = key
             if hasattr(self.keyboard, 'sval_settings'):
-                self.keyboard.sval_settings = value
+                self.keyboard.sval_settings[setting_name] = value
         elif key[0] == 'svalboard_layer_color':
             _, layer = key
             if hasattr(self.keyboard, 'sval_layer_colors'):
