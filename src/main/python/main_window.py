@@ -3,10 +3,10 @@ import logging
 import platform
 from json import JSONDecodeError
 
-from PySide6.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, QT_VERSION_STR
-from PySide6.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor, QFont
-from PySide6.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, QAction, qApp, \
-    QFileDialog, QDialog, QTabWidget, QActionGroup, QMessageBox, QLabel, QApplication, QSystemTrayIcon
+from PySide6.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, qVersion
+from PySide6.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor, QFont, QAction, QActionGroup
+from PySide6.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, \
+    QFileDialog, QDialog, QTabWidget, QMessageBox, QLabel, QApplication, QSystemTrayIcon
 
 import json
 import os
@@ -55,9 +55,8 @@ class MainWindow(QMainWindow):
             self.resize(WINDOW_WIDTH, WINDOW_HEIGHT)
 
         _pos = self.settings.value("pos", None)
-        # NOTE: QDesktopWidget is obsolete, but QApplication.screenAt only usable in Qt 5.10+
-        if _pos and qApp.desktop().geometry().contains(QRect(_pos, self.size())):
-        #if _pos and qApp.screenAt(_pos) and qApp.screenAt(_pos + (self.rect().bottomRight())):
+        # Check if saved position is on a visible screen
+        if _pos and qApp.screenAt(_pos) and qApp.screenAt(_pos + self.rect().bottomRight()):
             self.move(self.settings.value("pos"))
 
         if self.settings.value("maximized", False, bool):
@@ -706,7 +705,7 @@ class MainWindow(QMainWindow):
                'Licensed under the terms of the<br>GNU General Public License (version 2 or later)<br><br>' \
                '<a href="https://get.vial.today/">https://get.vial.today/</a>' \
                .format(qApp.applicationVersion(),
-                       platform.python_version(), QT_VERSION_STR)
+                       platform.python_version(), qVersion())
 
         if sys.platform == "emscripten":
             self.msg_about = QMessageBox()

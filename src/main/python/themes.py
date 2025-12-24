@@ -316,9 +316,10 @@ palettes = dict()
 for name, colors in themes:
     palette = QPalette()
     for role, color in colors.items():
-        if not hasattr(type(role), '__iter__'):
-            role = [role]
-        palette.setColor(*role, QColor(color))
+        if isinstance(role, tuple):
+            palette.setColor(*role, QColor(color))
+        else:
+            palette.setColor(role, QColor(color))
     palettes[name] = palette
 
 

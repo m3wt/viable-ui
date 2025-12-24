@@ -21,7 +21,7 @@ rm -rf "$OUTPUT_DIR"
 # Run Nuitka
 python3 -m nuitka \
     --standalone \
-    --enable-plugin=pyqt5 \
+    --enable-plugin=pyside6 \
     --include-data-dir="$RESOURCES_DIR"=. \
     --include-data-file="$GUI_DIR/src/build/settings/base.json"=build_settings.json \
     --linux-icon="$GUI_DIR/src/main/icons/linux/256.png" \
@@ -35,5 +35,3 @@ echo ""
 echo "Build complete! Output in: $OUTPUT_DIR/main.dist"
 echo ""
 echo "To run: $OUTPUT_DIR/main.dist/Vial"
-echo ""
-echo "To create AppImage, use appimagetool on the main.dist directory"

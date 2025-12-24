@@ -15,8 +15,6 @@ from app_context import cached_property, ApplicationContext
 
 import sys
 
-from main_window import MainWindow
-
 
 # http://timlehr.com/python-exception-hooks-with-qt-message-box/
 from util import init_logger
@@ -81,9 +79,11 @@ if __name__ == '__main__':
             initial_tab = "Matrix tester"
 
         appctxt = VialApplicationContext()       # 1. Instantiate ApplicationContext
+        _ = appctxt.app                          # 2. Create QApplication (needed before Qt class imports)
         init_logger()
         qt_exception_hook = UncaughtHook()
+        from main_window import MainWindow       # 3. Import after QApplication exists
         window = MainWindow(appctxt, initial_tab=initial_tab)
         window.show()
-        exit_code = appctxt.app.exec()      # 2. Invoke appctxt.app.exec()
+        exit_code = appctxt.app.exec()           # 4. Invoke appctxt.app.exec()
         sys.exit(exit_code)
