@@ -33,6 +33,7 @@ jobs:
           --include-data-dir=src/main/resources/base=. `
           --include-data-file=src/build/settings/base.json=build_settings.json `
           --windows-icon-from-ico=src/main/icons/Icon.ico `
+          --windows-console-mode=disable `
           --windows-company-name="Vial" `
           --windows-product-name="Vial" `
           --windows-file-version=0.7.5.0 `
