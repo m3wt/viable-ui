@@ -139,15 +139,8 @@ class MainWindow(QMainWindow):
         w.setLayout(layout)
         self.setCentralWidget(w)
 
-        self.init_menu()
-
-        self.autorefresh = Autorefresh()
-        self.autorefresh.devices_updated.connect(self.on_devices_updated)
-
-        # Connect to ChangeManager to navigate to affected editor on undo/redo
-        ChangeManager.instance().values_restored.connect(self._on_values_restored)
-
         # System tray icon for layer indicator (not on web)
+        # Initialize before init_menu() since menu references tray_icon
         self.tray_icon = None
         self.tray_layer_icons = {}
         self.tray_current_layer = -1
@@ -159,6 +152,14 @@ class MainWindow(QMainWindow):
             self.layer_poll_timer = QTimer()
             self.layer_poll_timer.timeout.connect(self._poll_layer)
             self.layer_poll_timer.start(200)
+
+        self.init_menu()
+
+        self.autorefresh = Autorefresh()
+        self.autorefresh.devices_updated.connect(self.on_devices_updated)
+
+        # Connect to ChangeManager to navigate to affected editor on undo/redo
+        ChangeManager.instance().values_restored.connect(self._on_values_restored)
 
         # cache for via definition files
         self.cache_path = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
@@ -488,6 +489,19 @@ class MainWindow(QMainWindow):
             if (keyboard_id in EXAMPLE_KEYBOARDS) or ((keyboard_id & 0xFFFFFFFFFFFFFF) == EXAMPLE_KEYBOARD_PREFIX):
                 QMessageBox.warning(self, "", "An example keyboard UID was detected.\n"
                                               "Please change your keyboard UID to be unique before you ship!")
+            # Check for newer Svalboard firmware than GUI supports
+            keyboard = self.autorefresh.current_device.keyboard
+            if hasattr(keyboard, 'sval_protocol_too_new') and keyboard.sval_protocol_too_new:
+                msg = QMessageBox(self)
+                msg.setIcon(QMessageBox.Warning)
+                msg.setWindowTitle("")
+                msg.setText("Your Svalboard firmware is newer than this GUI supports.<br>"
+                            "Svalboard features are disabled.<br><br>"
+                            "Please update the GUI from "
+                            "<a href='https://github.com/svalboard/vial-gui'>github.com/svalboard/vial-gui</a>")
+                msg.setTextFormat(Qt.RichText)
+                msg.setTextInteractionFlags(Qt.TextBrowserInteraction)
+                msg.exec_()
         else:
             cm.set_keyboard(None)
 

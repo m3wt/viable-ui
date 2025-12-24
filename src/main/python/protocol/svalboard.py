@@ -8,8 +8,9 @@ from protocol.constants import (SVAL_VIA_PREFIX, SVAL_GET_PROTOCOL_VERSION,
                                  SVAL_SET_SETTINGS, SVAL_GET_DPI_LEVELS,
                                  SVAL_GET_MH_TIMERS, SVAL_GET_CURRENT_LAYER)
 
-# Minimum supported Svalboard protocol version
+# Supported Svalboard protocol version range
 SVAL_MIN_PROTOCOL_VERSION = 5
+SVAL_MAX_PROTOCOL_VERSION = 5
 
 
 class ProtocolSvalboard(BaseProtocol):
@@ -18,6 +19,7 @@ class ProtocolSvalboard(BaseProtocol):
     # Capability flag
     is_svalboard = False
     sval_protocol_version = 0
+    sval_protocol_too_new = False  # True if firmware is newer than GUI supports
     sval_layer_count = 0
 
     # State
@@ -31,6 +33,7 @@ class ProtocolSvalboard(BaseProtocol):
         """Check if svalboard and load settings"""
         self.is_svalboard = False
         self.sval_protocol_version = 0
+        self.sval_protocol_too_new = False
         self.sval_layer_count = 0
         self.sval_layer_colors = None
         self.sval_settings = None
@@ -49,6 +52,9 @@ class ProtocolSvalboard(BaseProtocol):
                 self.sval_protocol_version = struct.unpack("<I", data[4:8])[0]
                 if self.sval_protocol_version < SVAL_MIN_PROTOCOL_VERSION:
                     return  # Unsupported old firmware
+                if self.sval_protocol_version > SVAL_MAX_PROTOCOL_VERSION:
+                    self.sval_protocol_too_new = True
+                    return  # Firmware newer than GUI supports
                 self.is_svalboard = True
             else:
                 return
