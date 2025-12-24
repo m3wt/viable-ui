@@ -386,11 +386,11 @@ class KeyboardWidget(QWidget):
         # Border pen for normal keys
         border_pen = qp.pen()
         border_pen.setColor(palette.color(QPalette.Mid))
-        border_pen.setWidthF(1.0)
+        border_pen.setWidthF(2.0)
 
-        # Border pen for selected keys
+        # Border pen for selected keys (white in dark themes - always distinct from colored accents)
         active_pen = qp.pen()
-        active_pen.setColor(palette.color(QPalette.Highlight))
+        active_pen.setColor(palette.color(QPalette.ButtonText))
         active_pen.setWidthF(2.0)
 
         # Background brush for normal keys
@@ -427,6 +427,17 @@ class KeyboardWidget(QWidget):
 
         default_font = qp.font()
 
+        # Modified key tint brush (accent color at ~20% opacity)
+        accent_color = palette.color(QPalette.Link)
+        tint_color = QColor(accent_color.red(), accent_color.green(), accent_color.blue(), 50)
+        modified_tint_brush = QBrush(tint_color, Qt.SolidPattern)
+
+        # Modified key border
+        modified_pen = QPen(accent_color)
+        modified_pen.setWidthF(2.0)
+
+        cm = ChangeManager.instance()
+
         for idx, key in enumerate(self.widgets):
             qp.save()
 
@@ -438,6 +449,15 @@ class KeyboardWidget(QWidget):
 
             active = key.active or (self.active_key == key and not self.active_mask)
 
+            # Check if key has pending modifications
+            if key.desc.row is not None:
+                change_key = ('keymap', self.current_layer, key.desc.row, key.desc.col)
+            elif key.desc.encoder_idx is not None:
+                change_key = ('encoder', self.current_layer, key.desc.encoder_idx, key.desc.encoder_dir)
+            else:
+                change_key = None
+            is_modified = change_key and cm.is_modified(change_key)
+
             # Choose brush based on key state
             if key.pressed:
                 brush = pressed_brush
@@ -447,7 +467,12 @@ class KeyboardWidget(QWidget):
                 brush = background_brush
 
             # Draw keycap: flat style with border
-            qp.setPen(active_pen if active else border_pen)
+            if is_modified:
+                qp.setPen(modified_pen)
+            elif active:
+                qp.setPen(active_pen)
+            else:
+                qp.setPen(border_pen)
             qp.setBrush(brush)
             qp.drawPath(key.background_draw_path)
 
@@ -497,39 +522,18 @@ class KeyboardWidget(QWidget):
                 else:
                     qp.drawText(key.rect, Qt.AlignCenter, key.text)
 
+            # Draw tint overlay on modified keys (active keys use border only)
+            if is_modified:
+                qp.setPen(Qt.NoPen)
+                qp.setBrush(modified_tint_brush)
+                qp.drawPath(key.background_draw_path)
+                if key.masked:
+                    qp.drawRoundedRect(key.mask_rect, key.corner, key.corner)
+
             # Draw the extra shape (encoder arrow)
             qp.setPen(text_pen)
             qp.setBrush(extra_brush)
             qp.drawPath(key.extra_draw_path)
-
-            # Draw ABA border for modified (pending) keys
-            cm = ChangeManager.instance()
-            if key.desc.row is not None:
-                change_key = ('keymap', self.current_layer, key.desc.row, key.desc.col)
-            elif key.desc.encoder_idx is not None:
-                change_key = ('encoder', self.current_layer, key.desc.encoder_idx, key.desc.encoder_dir)
-            else:
-                change_key = None
-
-            if change_key and cm.is_modified(change_key):
-                accent_color = palette.color(QPalette.Link)
-                bg_color = palette.color(QPalette.Window)
-
-                # ABA border: Accent-Background-Accent for guaranteed contrast
-                qp.setBrush(Qt.NoBrush)
-
-                # Outer accent (A) - 3px wide
-                outer_pen = QPen(accent_color)
-                outer_pen.setWidthF(3.0)
-                qp.setPen(outer_pen)
-                qp.drawPath(key.background_draw_path)
-
-                # Middle background (B) - drawn by scaling down slightly
-                # We use a slightly smaller path for the middle layer
-                mid_pen = QPen(bg_color)
-                mid_pen.setWidthF(1.5)
-                qp.setPen(mid_pen)
-                qp.drawPath(key.background_draw_path)
 
             qp.restore()
 

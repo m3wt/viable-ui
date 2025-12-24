@@ -224,6 +224,90 @@ themes = [
         (QPalette.Disabled, QPalette.Text): "#7f849c",
         (QPalette.Disabled, QPalette.Light): "#313244",
     }),
+    ("VS Code Dark", {
+        QPalette.Window: "#1e1e1e",
+        QPalette.WindowText: "#d4d4d4",
+        QPalette.Base: "#1e1e1e",
+        QPalette.AlternateBase: "#252526",
+        QPalette.ToolTipBase: "#252526",
+        QPalette.ToolTipText: "#d4d4d4",
+        QPalette.Text: "#d4d4d4",
+        QPalette.Button: "#3c3c3c",
+        QPalette.ButtonText: "#ffffff",
+        QPalette.BrightText: "#f14c4c",  # error red
+        QPalette.Link: "#cca700",  # warning orange (modified)
+        QPalette.Highlight: "#264f78",  # selection blue
+        QPalette.HighlightedText: "#ffffff",
+        QPalette.Mid: "#6d6d6d",  # border grey
+        (QPalette.Active, QPalette.Button): "#3c3c3c",
+        (QPalette.Disabled, QPalette.ButtonText): "#6d6d6d",
+        (QPalette.Disabled, QPalette.WindowText): "#6d6d6d",
+        (QPalette.Disabled, QPalette.Text): "#6d6d6d",
+        (QPalette.Disabled, QPalette.Light): "#3c3c3c",
+    }),
+    ("IntelliJ Darcula", {
+        QPalette.Window: "#3c3f41",
+        QPalette.WindowText: "#bbbbbb",
+        QPalette.Base: "#2b2b2b",
+        QPalette.AlternateBase: "#313335",
+        QPalette.ToolTipBase: "#4b4b4b",
+        QPalette.ToolTipText: "#bbbbbb",
+        QPalette.Text: "#a9b7c6",
+        QPalette.Button: "#4c5052",
+        QPalette.ButtonText: "#bbbbbb",
+        QPalette.BrightText: "#bc3f3c",  # error red
+        QPalette.Link: "#be9117",  # warning orange (modified)
+        QPalette.Highlight: "#214283",  # selection blue
+        QPalette.HighlightedText: "#ffffff",
+        QPalette.Mid: "#5a5d5e",  # border grey
+        (QPalette.Active, QPalette.Button): "#4c5052",
+        (QPalette.Disabled, QPalette.ButtonText): "#777777",
+        (QPalette.Disabled, QPalette.WindowText): "#777777",
+        (QPalette.Disabled, QPalette.Text): "#777777",
+        (QPalette.Disabled, QPalette.Light): "#4c5052",
+    }),
+    ("One Dark", {
+        QPalette.Window: "#282c34",
+        QPalette.WindowText: "#abb2bf",
+        QPalette.Base: "#21252b",
+        QPalette.AlternateBase: "#2c313a",
+        QPalette.ToolTipBase: "#2c313a",
+        QPalette.ToolTipText: "#abb2bf",
+        QPalette.Text: "#abb2bf",
+        QPalette.Button: "#3a3f4b",
+        QPalette.ButtonText: "#abb2bf",
+        QPalette.BrightText: "#e06c75",  # error red
+        QPalette.Link: "#d19a66",  # warning orange (modified)
+        QPalette.Highlight: "#528bff",  # selection blue
+        QPalette.HighlightedText: "#ffffff",
+        QPalette.Mid: "#5c6370",  # border grey
+        (QPalette.Active, QPalette.Button): "#3a3f4b",
+        (QPalette.Disabled, QPalette.ButtonText): "#5c6370",
+        (QPalette.Disabled, QPalette.WindowText): "#5c6370",
+        (QPalette.Disabled, QPalette.Text): "#5c6370",
+        (QPalette.Disabled, QPalette.Light): "#3e4451",
+    }),
+    ("GitHub Dark", {
+        QPalette.Window: "#0d1117",
+        QPalette.WindowText: "#c9d1d9",
+        QPalette.Base: "#010409",
+        QPalette.AlternateBase: "#161b22",
+        QPalette.ToolTipBase: "#161b22",
+        QPalette.ToolTipText: "#c9d1d9",
+        QPalette.Text: "#c9d1d9",
+        QPalette.Button: "#21262d",
+        QPalette.ButtonText: "#c9d1d9",
+        QPalette.BrightText: "#f85149",  # error red
+        QPalette.Link: "#d29922",  # warning orange (modified)
+        QPalette.Highlight: "#388bfd",  # selection blue
+        QPalette.HighlightedText: "#ffffff",
+        QPalette.Mid: "#484f58",  # border grey
+        (QPalette.Active, QPalette.Button): "#21262d",
+        (QPalette.Disabled, QPalette.ButtonText): "#484f58",
+        (QPalette.Disabled, QPalette.WindowText): "#484f58",
+        (QPalette.Disabled, QPalette.Text): "#484f58",
+        (QPalette.Disabled, QPalette.Light): "#30363d",
+    }),
 ]
 
 palettes = dict()
