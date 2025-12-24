@@ -1,4 +1,4 @@
-from PyQt5.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 
 from keycodes.keycodes import Keycode
 from any_keycode_dialog import AnyKeycodeDialog
@@ -11,7 +11,7 @@ from unlocker import Unlocker
 
 class KeyWidget(KeyboardWidget):
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, keycode_filter=None):
         super().__init__(None)

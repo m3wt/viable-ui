@@ -18,7 +18,7 @@ if sys.platform == "emscripten":
         _cache[key] = value
         vialglue.storage_set(key, str(value))
 else:
-    from PyQt5.QtCore import QSettings
+    from PySide6.QtCore import QSettings
     _settings = QSettings("Vial", "Vial")
 
     def init(settings_dict=None):

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
+from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
                              QLabel, QCheckBox, QScrollArea, QPushButton, QToolTip)
 
 from change_manager import ChangeManager, AltRepeatKeyChange
@@ -17,7 +17,7 @@ from widgets.flowlayout import FlowLayout
 class AltRepeatKeyEntryUI(QObject):
     """A single alt repeat key entry in compact grid format"""
 
-    changed = pyqtSignal(int)  # emits entry index
+    changed = Signal(int)  # emits entry index
 
     def __init__(self, idx):
         super().__init__()

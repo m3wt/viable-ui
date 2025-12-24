@@ -7,7 +7,7 @@ import json
 import os
 import sys
 
-from PyQt5 import QtWidgets
+from PySide6 import QtWidgets
 
 
 def cached_property(func):

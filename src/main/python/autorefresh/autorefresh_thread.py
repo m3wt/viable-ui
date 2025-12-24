@@ -11,14 +11,14 @@ if sys.platform == "emscripten":
 else:
     from multiprocessing import RLock
 
-from PyQt5.QtCore import pyqtSignal, QThread
+from PySide6.QtCore import Signal, QThread
 
 from util import find_vial_devices
 
 
 class AutorefreshThread(QThread):
 
-    devices_updated = pyqtSignal(object, bool)
+    devices_updated = Signal(object, bool)
 
     def __init__(self):
         super().__init__()

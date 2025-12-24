@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import json
 
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QGridLayout, QWidget, QSizePolicy
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QGridLayout, QWidget, QSizePolicy
 
 from constants import KEYCODE_BTN_RATIO
 from keycodes.keycodes import Keycode
@@ -13,7 +13,7 @@ from kle_serial import Serial as KleSerial
 
 class DisplayKeyboard(QWidget):
 
-    keycode_changed = pyqtSignal(str)
+    keycode_changed = Signal(str)
 
     def __init__(self, kbdef):
         super().__init__()

@@ -2,9 +2,9 @@
 import json
 from collections import defaultdict
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import pyqtSignal, QObject
-from PyQt5.QtWidgets import QVBoxLayout, QCheckBox, QGridLayout, QHBoxLayout, QLabel, QWidget, QSizePolicy, QTabWidget, QSpinBox, QFrame
+from PySide6 import QtCore
+from PySide6.QtCore import Signal, QObject
+from PySide6.QtWidgets import QVBoxLayout, QCheckBox, QGridLayout, QHBoxLayout, QLabel, QWidget, QSizePolicy, QTabWidget, QSpinBox, QFrame
 
 from change_manager import ChangeManager, QmkSettingChange, QmkBitChange
 from editor.basic_editor import BasicEditor
@@ -14,7 +14,7 @@ from vial_device import VialKeyboard
 
 class GenericOption(QObject):
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, option, container):
         super().__init__()
@@ -226,8 +226,8 @@ class QmkSettings(BasicEditor):
     def _update_ui_state(self):
         """Update UI highlights and button states without tracking changes."""
         # Get link color for highlighting
-        from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtGui import QPalette
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QPalette
         link_color = QApplication.palette().color(QPalette.Link)
         default_color = QApplication.palette().color(QPalette.WindowText)
 

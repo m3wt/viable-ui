@@ -2,9 +2,9 @@
 import sys
 import os
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import pyqtSignal, QProcess
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
+from PySide6 import QtCore
+from PySide6.QtCore import Signal, QProcess
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
 from app_context import is_frozen
 
 from keycodes.keycodes import Keycode
@@ -14,8 +14,8 @@ from util import tr
 
 class LinuxRecorder(QWidget):
 
-    keystroke = pyqtSignal(object)
-    stopped = pyqtSignal()
+    keystroke = Signal(object)
+    stopped = Signal()
 
     def __init__(self):
         super().__init__()

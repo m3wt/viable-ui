@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import sys
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
+from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBoxLayout,
                              QLabel, QCheckBox, QScrollArea, QPushButton, QMenu, QWidgetAction,
                              QToolButton, QFrame)
 
@@ -18,7 +18,7 @@ from editor.basic_editor import BasicEditor
 class LayersPopup(QMenu):
     """Popup menu for layer selection"""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -96,7 +96,7 @@ class LayersPopup(QMenu):
 class OptionsPopup(QMenu):
     """Popup menu for options"""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -176,7 +176,7 @@ class OptionsPopup(QMenu):
 class KeyOverrideEntryUI(QObject):
     """A single key override entry in compact card format"""
 
-    changed = pyqtSignal(int)  # emits entry index
+    changed = Signal(int)  # emits entry index
 
     def __init__(self, idx):
         super().__init__()

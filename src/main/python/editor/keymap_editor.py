@@ -2,10 +2,10 @@
 import json
 import sys
 
-from PyQt5.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout, QMessageBox, QWidget,
                              QScrollArea, QSizePolicy, QToolButton, QMenu, QApplication,
                              QComboBox)
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer
 
 from any_keycode_dialog import AnyKeycodeDialog
 from change_manager import ChangeManager, KeymapChange, EncoderChange
@@ -22,7 +22,7 @@ import storage
 
 class ClickableWidget(QWidget):
 
-    clicked = pyqtSignal()
+    clicked = Signal()
 
     def mousePressEvent(self, evt):
         super().mousePressEvent(evt)

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import keyboard
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
+from PySide6 import QtCore
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QApplication
 
 from keycodes.keycodes import Keycode
 from macro.macro_key import KeyUp, KeyDown
@@ -12,8 +12,8 @@ from util import tr
 
 class WindowsRecorder(QWidget):
 
-    keystroke = pyqtSignal(object)
-    stopped = pyqtSignal()
+    keystroke = Signal(object)
+    stopped = Signal()
 
     def __init__(self):
         super().__init__()

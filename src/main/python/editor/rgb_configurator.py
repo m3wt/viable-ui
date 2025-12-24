@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5 import QtCore
-from PyQt5.QtCore import pyqtSignal, QObject
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QWidget, QPushButton, QHBoxLayout, QSizePolicy, QGridLayout, QLabel, QSlider, \
+from PySide6 import QtCore
+from PySide6.QtCore import Signal, QObject
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QWidget, QPushButton, QHBoxLayout, QSizePolicy, QGridLayout, QLabel, QSlider, \
     QComboBox, QColorDialog, QCheckBox
 
 from editor.basic_editor import BasicEditor
@@ -118,7 +118,7 @@ VIALRGB_EFFECTS = [
 
 class BasicHandler(QObject):
 
-    update = pyqtSignal()
+    update = Signal()
 
     def __init__(self, container):
         super().__init__()

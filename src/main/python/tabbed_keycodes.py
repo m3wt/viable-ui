@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QTabWidget, QWidget, QScrollArea, QApplication, QVBoxLayout, QHBoxLayout, \
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QTabWidget, QWidget, QScrollArea, QApplication, QVBoxLayout, QHBoxLayout, \
     QPushButton, QLabel, QFrame, QGridLayout, QSizePolicy
-from PyQt5.QtGui import QPalette
+from PySide6.QtGui import QPalette
 
 from constants import KEYCODE_BTN_RATIO
 from widgets.display_keyboard import DisplayKeyboard
@@ -170,8 +170,8 @@ def get_settings_keycodes_by_section():
 class ModsBar(QWidget):
     """Compact modifier toggle bar with special keys (KC_NO, KC_TRNS)"""
 
-    keycode_changed = pyqtSignal(str)
-    mods_changed = pyqtSignal(bool)  # Emitted when any modifier state changes (bool = has_active_mods)
+    keycode_changed = Signal(str)
+    mods_changed = Signal(bool)  # Emitted when any modifier state changes (bool = has_active_mods)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -360,7 +360,7 @@ class ModsBar(QWidget):
 
 class AlternativeDisplay(QWidget):
 
-    keycode_changed = pyqtSignal(str)
+    keycode_changed = Signal(str)
 
     def __init__(self, kbdef, keycodes, prefix_buttons):
         super().__init__()
@@ -442,7 +442,7 @@ class AlternativeDisplay(QWidget):
 
 class Tab(QScrollArea):
 
-    keycode_changed = pyqtSignal(str)
+    keycode_changed = Signal(str)
 
     def __init__(self, parent, label, alts, prefix_buttons=None):
         super().__init__(parent)
@@ -523,7 +523,7 @@ class Tab(QScrollArea):
     def showEvent(self, evt):
         super().showEvent(evt)
         # Defer selection to ensure layout is complete
-        from PyQt5.QtCore import QTimer
+        from PySide6.QtCore import QTimer
         QTimer.singleShot(0, self.select_alternative)
 
 
@@ -536,7 +536,7 @@ class SimpleTab(Tab):
 class StenoTab(QScrollArea):
     """Tab that displays steno keycodes in a grid matching the physical steno keyboard layout"""
 
-    keycode_changed = pyqtSignal(str)
+    keycode_changed = Signal(str)
 
     # Left hand layout (row, col within left grid)
     LEFT_LAYOUT = [
@@ -703,7 +703,7 @@ class StenoTab(QScrollArea):
 class SectionedTab(QScrollArea):
     """Tab that displays keycodes in labeled rows (label on left, buttons flowing right)"""
 
-    keycode_changed = pyqtSignal(str)
+    keycode_changed = Signal(str)
 
     def __init__(self, parent, label, sections_or_func):
         """
@@ -809,7 +809,7 @@ class SectionedTab(QScrollArea):
 class HeaderedSectionedTab(QScrollArea):
     """Tab that displays keycodes in sections with headers above each section"""
 
-    keycode_changed = pyqtSignal(str)
+    keycode_changed = Signal(str)
 
     def __init__(self, parent, label, sections_or_func):
         super().__init__(parent)
@@ -913,8 +913,8 @@ def keycode_filter_masked(kc):
 
 class FilteredTabbedKeycodes(QWidget):
 
-    keycode_changed = pyqtSignal(str)
-    anykey = pyqtSignal()
+    keycode_changed = Signal(str)
+    anykey = Signal()
 
     def __init__(self, parent=None, keycode_filter=keycode_filter_any):
         super().__init__(parent)
@@ -1014,8 +1014,8 @@ class FilteredTabbedKeycodes(QWidget):
 
 class TabbedKeycodes(QWidget):
 
-    keycode_changed = pyqtSignal(str)
-    anykey = pyqtSignal()
+    keycode_changed = Signal(str)
+    anykey = Signal()
 
     def __init__(self):
         super().__init__()

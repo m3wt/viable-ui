@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """ChangeManager singleton for tracking uncommitted changes with undo/redo."""
 from typing import Dict, List, Tuple, Optional, Any
-from PyQt5.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 from .changes import Change
 from .change_group import ChangeGroup
@@ -32,14 +32,14 @@ class ChangeManager(QObject):
     """
 
     # Signals
-    changed = pyqtSignal()  # Emitted when any state changes
-    can_undo_changed = pyqtSignal(bool)
-    can_redo_changed = pyqtSignal(bool)
-    can_save_changed = pyqtSignal(bool)
-    modified_keys_changed = pyqtSignal(set)  # Set of modified keys
-    auto_commit_changed = pyqtSignal(bool)  # Emitted when auto_commit mode changes
-    values_restored = pyqtSignal(set)  # Emitted after undo/redo with affected keys
-    saved = pyqtSignal()  # Emitted after successful save to device
+    changed = Signal()  # Emitted when any state changes
+    can_undo_changed = Signal(bool)
+    can_redo_changed = Signal(bool)
+    can_save_changed = Signal(bool)
+    modified_keys_changed = Signal(set)  # Set of modified keys
+    auto_commit_changed = Signal(bool)  # Emitted when auto_commit mode changes
+    values_restored = Signal(set)  # Emitted after undo/redo with affected keys
+    saved = Signal()  # Emitted after successful save to device
 
     _instance: Optional['ChangeManager'] = None
 

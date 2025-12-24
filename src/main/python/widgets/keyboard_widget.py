@@ -1,8 +1,8 @@
 from collections import defaultdict
 
-from PyQt5.QtGui import QPainter, QColor, QPainterPath, QTransform, QBrush, QPolygonF, QPalette, QPen
-from PyQt5.QtWidgets import QWidget, QToolTip, QApplication
-from PyQt5.QtCore import Qt, QSize, QRect, QPointF, pyqtSignal, QEvent, QRectF
+from PySide6.QtGui import QPainter, QColor, QPainterPath, QTransform, QBrush, QPolygonF, QPalette, QPen
+from PySide6.QtWidgets import QWidget, QToolTip, QApplication
+from PySide6.QtCore import Qt, QSize, QRect, QPointF, Signal, QEvent, QRectF
 
 from change_manager import ChangeManager
 from constants import KEY_SIZE_RATIO, KEY_SPACING_RATIO, KEYBOARD_WIDGET_PADDING, \
@@ -252,9 +252,9 @@ class EncoderWidget(KeyWidget):
 
 class KeyboardWidget(QWidget):
 
-    clicked = pyqtSignal()
-    deselected = pyqtSignal()
-    anykey = pyqtSignal()
+    clicked = Signal()
+    deselected = Signal()
+    anykey = Signal()
 
     def __init__(self, layout_editor):
         super().__init__()

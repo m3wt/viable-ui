@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QPalette, QColor
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QPalette, QColor
 
 themes = [
     ("Light", {

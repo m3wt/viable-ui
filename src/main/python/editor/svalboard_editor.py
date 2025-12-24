@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5 import QtCore
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import (QWidget, QPushButton, QHBoxLayout, QVBoxLayout,
+from PySide6 import QtCore
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (QWidget, QPushButton, QHBoxLayout, QVBoxLayout,
                               QGridLayout, QLabel, QComboBox, QCheckBox,
                               QColorDialog, QGroupBox, QScrollArea, QSizePolicy,
                               QFrame)
@@ -391,7 +391,7 @@ class SvalboardEditor(BasicEditor):
             self._color_dialog = dlg  # prevent garbage collection
             dlg.show()
         else:
-            if dlg.exec_():
+            if dlg.exec():
                 on_color_selected(dlg.selectedColor())
 
     def on_setting_changed(self):

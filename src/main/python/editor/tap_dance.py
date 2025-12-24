@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5 import QtCore
-from PyQt5.QtCore import pyqtSignal, QObject, Qt
-from PyQt5.QtWidgets import (QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel,
+from PySide6 import QtCore
+from PySide6.QtCore import Signal, QObject, Qt
+from PySide6.QtWidgets import (QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QSpinBox, QScrollArea, QGridLayout)
 
 from change_manager import ChangeManager, TapDanceChange
@@ -16,8 +16,8 @@ from widgets.flowlayout import FlowLayout
 class TapDanceEntryUI(QObject):
     """A single tap dance entry with labeled columns"""
 
-    key_changed = pyqtSignal(int)  # emits tap dance index
-    timing_changed = pyqtSignal(int)  # emits tap dance index
+    key_changed = Signal(int)  # emits tap dance index
+    timing_changed = Signal(int)  # emits tap dance index
 
     def __init__(self, idx):
         super().__init__()

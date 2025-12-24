@@ -1,6 +1,6 @@
 import sys
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 
 class AutorefreshLocker:
@@ -18,7 +18,7 @@ class AutorefreshLocker:
 class Autorefresh(QObject):
 
     instance = None
-    devices_updated = pyqtSignal(object, bool)
+    devices_updated = Signal(object, bool)
 
     def __init__(self):
         super().__init__()

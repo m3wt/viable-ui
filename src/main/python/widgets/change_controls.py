@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Inline controls for Push/Undo/Redo/Revert, displayed next to keyboard selector."""
 import sys
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel, QCheckBox
-from PyQt5.QtGui import QKeySequence
-from PyQt5.QtCore import Qt
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel, QCheckBox
+from PySide6.QtGui import QKeySequence
+from PySide6.QtCore import Qt
 
 from change_manager import ChangeManager
 

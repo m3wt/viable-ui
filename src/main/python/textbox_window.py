@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QDialog, QDialogButtonBox, \
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QDialog, QDialogButtonBox, \
     QPlainTextEdit, QToolButton, QFileDialog, QWidget
 
 from util import tr
@@ -84,7 +84,7 @@ class TextboxWindow(QDialog):
         dialog.setAcceptMode(QFileDialog.AcceptSave)
         dialog.setNameFilters(["{} (*.{})".format(self.file_type, self.file_extension)])
 
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             with open(dialog.selectedFiles()[0], "wb") as outf:
                 outf.write(self.macrotext.toPlainText().encode(self.encoding))
 
@@ -94,7 +94,7 @@ class TextboxWindow(QDialog):
         dialog.setAcceptMode(QFileDialog.AcceptOpen)
         dialog.setNameFilters(["{} (*.{})".format(self.file_type, self.file_extension)])
 
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             with open(dialog.selectedFiles()[0], "rb") as inf:
                 self.macrotext.setPlainText(inf.read().decode(self.encoding))
 

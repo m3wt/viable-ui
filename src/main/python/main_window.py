@@ -3,9 +3,9 @@ import logging
 import platform
 from json import JSONDecodeError
 
-from PyQt5.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, QT_VERSION_STR
-from PyQt5.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor, QFont
-from PyQt5.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, QAction, qApp, \
+from PySide6.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, QT_VERSION_STR
+from PySide6.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor, QFont
+from PySide6.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, QAction, qApp, \
     QFileDialog, QDialog, QTabWidget, QActionGroup, QMessageBox, QLabel, QApplication, QSystemTrayIcon
 
 import json
@@ -327,7 +327,7 @@ class MainWindow(QMainWindow):
             dialog.setDefaultSuffix("vil")
             dialog.setAcceptMode(QFileDialog.AcceptOpen)
             dialog.setNameFilters(["Vial layout (*.vil)"])
-            if dialog.exec_() == QDialog.Accepted:
+            if dialog.exec() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "rb") as inf:
                     data = inf.read()
                 # Clear pending changes before loading - file load overwrites everything
@@ -347,7 +347,7 @@ class MainWindow(QMainWindow):
             dialog.setDefaultSuffix("vil")
             dialog.setAcceptMode(QFileDialog.AcceptSave)
             dialog.setNameFilters(["Vial layout (*.vil)"])
-            if dialog.exec_() == QDialog.Accepted:
+            if dialog.exec() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "wb") as outf:
                     outf.write(self.keymap_editor.save_layout())
 
@@ -378,7 +378,7 @@ class MainWindow(QMainWindow):
             dialog.setDefaultSuffix("svil")
             dialog.setAcceptMode(QFileDialog.AcceptSave)
             dialog.setNameFilters(["Svalboard profile (*.svil)"])
-            if dialog.exec_() == QDialog.Accepted:
+            if dialog.exec() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "wb") as outf:
                     outf.write(profile_bytes)
 
@@ -393,7 +393,7 @@ class MainWindow(QMainWindow):
             dialog.setDefaultSuffix("svil")
             dialog.setAcceptMode(QFileDialog.AcceptOpen)
             dialog.setNameFilters(["Svalboard profile (*.svil)"])
-            if dialog.exec_() == QDialog.Accepted:
+            if dialog.exec() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "rb") as inf:
                     data = inf.read()
                 self._restore_svalboard_profile(data)
@@ -501,7 +501,7 @@ class MainWindow(QMainWindow):
                             "<a href='https://github.com/svalboard/vial-gui'>github.com/svalboard/vial-gui</a>")
                 msg.setTextFormat(Qt.RichText)
                 msg.setTextInteractionFlags(Qt.TextBrowserInteraction)
-                msg.exec_()
+                msg.exec()
         else:
             cm.set_keyboard(None)
 
@@ -615,7 +615,7 @@ class MainWindow(QMainWindow):
         dialog.setDefaultSuffix("json")
         dialog.setAcceptMode(QFileDialog.AcceptOpen)
         dialog.setNameFilters(["VIA layout JSON (*.json)"])
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             with open(dialog.selectedFiles()[0], "rb") as inf:
                 data = inf.read()
             self.autorefresh.sideload_via_json(data)
@@ -625,7 +625,7 @@ class MainWindow(QMainWindow):
         dialog.setDefaultSuffix("json")
         dialog.setAcceptMode(QFileDialog.AcceptOpen)
         dialog.setNameFilters(["VIA layout JSON (*.json)"])
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec() == QDialog.Accepted:
             with open(dialog.selectedFiles()[0], "rb") as inf:
                 data = inf.read()
             self.autorefresh.load_dummy(data)
@@ -684,7 +684,7 @@ class MainWindow(QMainWindow):
             self.settings.setValue("theme", theme)
             msg = QMessageBox()
             msg.setText(tr("MainWindow", "In order to fully apply the theme you should restart the application."))
-            msg.exec_()
+            msg.exec()
 
     def on_tab_changed(self, index):
         TabbedKeycodes.close_tray()

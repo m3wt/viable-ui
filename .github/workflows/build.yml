@@ -29,7 +29,7 @@ jobs:
       run: |
         python -m nuitka `
           --standalone `
-          --enable-plugin=pyqt5 `
+          --enable-plugin=pyside6 `
           --include-data-dir=src/main/resources/base=. `
           --include-data-file=src/build/settings/base.json=build_settings.json `
           --windows-icon-from-ico=src/main/icons/Icon.ico `
@@ -72,7 +72,7 @@ jobs:
       run: |
         python -m nuitka \
           --standalone \
-          --enable-plugin=pyqt5 \
+          --enable-plugin=pyside6 \
           --include-data-dir=src/main/resources/base=. \
           --include-data-file=src/build/settings/base.json=build_settings.json \
           --macos-app-icon=src/main/icons/mac/1024.png \
@@ -117,7 +117,7 @@ jobs:
       run: |
         python -m nuitka \
           --standalone \
-          --enable-plugin=pyqt5 \
+          --enable-plugin=pyside6 \
           --include-data-dir=src/main/resources/base=. \
           --include-data-file=src/build/settings/base.json=build_settings.json \
           --linux-icon=src/main/icons/linux/256.png \

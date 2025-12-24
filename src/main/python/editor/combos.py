@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-from PyQt5 import QtCore
-from PyQt5.QtCore import pyqtSignal, QObject, Qt
-from PyQt5.QtWidgets import (QWidget, QSizePolicy, QHBoxLayout, QVBoxLayout, QLabel,
+from PySide6 import QtCore
+from PySide6.QtCore import Signal, QObject, Qt
+from PySide6.QtWidgets import (QWidget, QSizePolicy, QHBoxLayout, QVBoxLayout, QLabel,
                              QScrollArea, QPushButton)
 
 from change_manager import ChangeManager, ComboChange
@@ -16,8 +16,8 @@ from widgets.flowlayout import FlowLayout
 class ComboEntryUI(QObject):
     """A single combo entry: small index + 4 input keys + arrow + output key"""
 
-    key_changed = pyqtSignal(int)  # emits combo index
-    deleted = pyqtSignal(int)  # emits combo index
+    key_changed = Signal(int)  # emits combo index
+    deleted = Signal(int)  # emits combo index
 
     def __init__(self, idx):
         super().__init__()

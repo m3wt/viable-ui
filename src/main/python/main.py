@@ -8,8 +8,8 @@ if ssl.get_default_verify_paths().cafile is None:
 
 import traceback
 
-from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import pyqtSignal
+from PySide6 import QtWidgets, QtCore
+from PySide6.QtCore import Signal
 
 from app_context import cached_property, ApplicationContext
 
@@ -26,11 +26,11 @@ def show_exception_box(log_msg):
     if QtWidgets.QApplication.instance() is not None:
         errorbox = QtWidgets.QMessageBox()
         errorbox.setText(log_msg)
-        errorbox.exec_()
+        errorbox.exec()
 
 
 class UncaughtHook(QtCore.QObject):
-    _exception_caught = pyqtSignal(object)
+    _exception_caught = Signal(object)
 
     def __init__(self, *args, **kwargs):
         super(UncaughtHook, self).__init__(*args, **kwargs)
@@ -85,5 +85,5 @@ if __name__ == '__main__':
         qt_exception_hook = UncaughtHook()
         window = MainWindow(appctxt, initial_tab=initial_tab)
         window.show()
-        exit_code = appctxt.app.exec_()      # 2. Invoke appctxt.app.exec_()
+        exit_code = appctxt.app.exec()      # 2. Invoke appctxt.app.exec()
         sys.exit(exit_code)

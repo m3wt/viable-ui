@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import json
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QPushButton, QGridLayout, QHBoxLayout, QToolButton, QVBoxLayout, \
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QPushButton, QGridLayout, QHBoxLayout, QToolButton, QVBoxLayout, \
     QWidget, QMenu, QScrollArea, QFrame
 
 from keycodes.keycodes import Keycode
@@ -17,9 +17,9 @@ from textbox_window import TextboxWindow
 
 class MacroTab(QVBoxLayout):
 
-    changed = pyqtSignal()
-    record = pyqtSignal(object, bool)
-    record_stop = pyqtSignal()
+    changed = Signal()
+    record = Signal(object, bool)
+    record_stop = Signal()
 
     def __init__(self, parent, enable_recorder):
         super().__init__()

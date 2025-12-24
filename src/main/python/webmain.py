@@ -3,9 +3,9 @@ import os
 
 import traceback
 
-from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import pyqtSignal, Qt
-from PyQt5.QtGui import QPalette, QColor
+from PySide6 import QtWidgets, QtCore
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QPalette, QColor
 
 import sys
 import json
@@ -44,7 +44,7 @@ def show_exception_box(log_msg):
 
 
 class UncaughtHook(QtCore.QObject):
-    _exception_caught = pyqtSignal(object)
+    _exception_caught = Signal(object)
 
     def __init__(self, *args, **kwargs):
         super(UncaughtHook, self).__init__(*args, **kwargs)
