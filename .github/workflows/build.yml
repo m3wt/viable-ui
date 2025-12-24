@@ -1,0 +1,134 @@
+name: Build
+
+on:
+  push:
+    branches: [master, main, nuitka]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements-build.txt
+
+    - name: Show resolved versions
+      run: pip freeze
+
+    - name: Build with Nuitka
+      run: |
+        python -m nuitka `
+          --standalone `
+          --enable-plugin=pyqt5 `
+          --include-data-dir=src/main/resources/base=. `
+          --include-data-file=src/build/settings/base.json=build_settings.json `
+          --windows-icon-from-ico=src/main/icons/Icon.ico `
+          --windows-company-name="Vial" `
+          --windows-product-name="Vial" `
+          --windows-file-version=0.7.5.0 `
+          --windows-product-version=0.7.5.0 `
+          --windows-file-description="Vial Keyboard Configurator" `
+          --output-dir=build-nuitka/output `
+          --output-filename=Vial.exe `
+          --assume-yes-for-downloads `
+          --remove-output `
+          src/main/python/main.py
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Vial-Windows
+        path: build-nuitka/output/main.dist/
+
+  build-macos:
+    runs-on: macos-14  # Apple Silicon
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements-build.txt
+
+    - name: Show resolved versions
+      run: pip freeze
+
+    - name: Build with Nuitka
+      run: |
+        python -m nuitka \
+          --standalone \
+          --enable-plugin=pyqt5 \
+          --include-data-dir=src/main/resources/base=. \
+          --include-data-file=src/build/settings/base.json=build_settings.json \
+          --macos-app-icon=src/main/icons/mac/1024.png \
+          --macos-create-app-bundle \
+          --macos-app-name=Vial \
+          --output-dir=build-nuitka/output \
+          --output-filename=Vial \
+          --assume-yes-for-downloads \
+          --remove-output \
+          src/main/python/main.py
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Vial-macOS
+        path: build-nuitka/output/main.dist/
+
+  build-linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libusb-1.0-0-dev libudev-dev patchelf
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements-build.txt
+
+    - name: Show resolved versions
+      run: pip freeze
+
+    - name: Build with Nuitka
+      run: |
+        python -m nuitka \
+          --standalone \
+          --enable-plugin=pyqt5 \
+          --include-data-dir=src/main/resources/base=. \
+          --include-data-file=src/build/settings/base.json=build_settings.json \
+          --linux-icon=src/main/icons/linux/256.png \
+          --output-dir=build-nuitka/output \
+          --output-filename=Vial \
+          --assume-yes-for-downloads \
+          --remove-output \
+          src/main/python/main.py
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Vial-Linux
+        path: build-nuitka/output/main.dist/
