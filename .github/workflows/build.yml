@@ -45,11 +45,20 @@ jobs:
           --remove-output `
           src/main/python/main.py
 
-    - name: Upload artifact
+    - name: Create installer
+      run: iscc build-nuitka/installer.iss
+
+    - name: Upload portable artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Vial-Windows
+        name: Vial-Windows-Portable
         path: build-nuitka/output/main.dist/
+
+    - name: Upload installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: Vial-Windows-Installer
+        path: build-nuitka/output/Vial-*-Setup.exe
 
   build-macos:
     runs-on: macos-14  # Apple Silicon
