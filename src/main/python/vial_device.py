@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import time
+import logging
 
 from hidproxy import hid
 from protocol.keyboard_comm import Keyboard
@@ -46,9 +47,13 @@ class VialKeyboard(VialDevice):
         self.keyboard = None
 
     def open(self, override_json=None):
+        logging.debug(" VialKeyboard.open() called for path=%s", self.desc.get("path"))
         super().open(override_json)
+        logging.debug(" Device opened, creating Keyboard object")
         self.keyboard = Keyboard(self.dev)
+        logging.debug(" Calling keyboard.reload()")
         self.keyboard.reload(override_json)
+        logging.debug(" VialKeyboard.open() complete")
 
     def title(self):
         s = "{} {}".format(self.desc["manufacturer_string"], self.desc["product_string"]).strip()

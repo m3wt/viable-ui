@@ -6,7 +6,6 @@ from qtpy.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBo
                              QToolButton, QFrame)
 
 from change_manager import ChangeManager, KeyOverrideChange
-from protocol.constants import VIAL_PROTOCOL_DYNAMIC
 from widgets.key_widget import KeyWidget
 from widgets.flowlayout import FlowLayout
 from tabbed_keycodes import TabbedKeycodes
@@ -16,7 +15,7 @@ from editor.basic_editor import BasicEditor
 
 
 class LayersPopup(QMenu):
-    """Popup menu for layer selection"""
+    """Popup menu for layer selection (supports all 32 QMK layers)"""
 
     changed = Signal()
 
@@ -28,11 +27,11 @@ class LayersPopup(QMenu):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(4)
 
-        # Layer checkboxes in 2 rows of 8
+        # Layer checkboxes in 4 rows of 8 (32 total layers)
         grid = QGridLayout()
         grid.setSpacing(2)
         self.layer_chks = []
-        for i in range(16):
+        for i in range(32):
             chk = QCheckBox(str(i))
             chk.stateChanged.connect(self.on_change)
             row = i // 8
@@ -74,7 +73,7 @@ class LayersPopup(QMenu):
     def get_summary(self):
         """Return summary text for button"""
         count = sum(1 for chk in self.layer_chks if chk.isChecked())
-        if count == 16:
+        if count == 32:
             return "All"
         elif count == 0:
             return "None"
@@ -546,7 +545,7 @@ class KeyOverride(BasicEditor):
 
     def valid(self):
         return isinstance(self.device, VialKeyboard) and \
-               (self.device.keyboard and self.device.keyboard.vial_protocol >= VIAL_PROTOCOL_DYNAMIC
+               (self.device.keyboard and self.device.keyboard.viable_protocol
                 and self.device.keyboard.key_override_count > 0)
 
     def on_change(self, idx):

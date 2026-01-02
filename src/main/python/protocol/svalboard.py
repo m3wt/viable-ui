@@ -2,212 +2,176 @@
 import struct
 
 from protocol.base_protocol import BaseProtocol
-from protocol.constants import (SVAL_VIA_PREFIX, SVAL_GET_PROTOCOL_VERSION,
-                                 SVAL_GET_LAYER_HSV, SVAL_SET_LAYER_HSV,
-                                 SVAL_GET_LAYER_COUNT, SVAL_GET_SETTINGS,
-                                 SVAL_SET_SETTINGS, SVAL_GET_DPI_LEVELS,
-                                 SVAL_GET_MH_TIMERS, SVAL_GET_CURRENT_LAYER)
+from protocol.constants import CMD_VIA_CUSTOM_GET_VALUE, CMD_VIA_CUSTOM_SET_VALUE
 
-# Supported Svalboard protocol version range
-SVAL_MIN_PROTOCOL_VERSION = 5
-SVAL_MAX_PROTOCOL_VERSION = 5
+# VIA custom value IDs for Svalboard (must match firmware)
+SVAL_ID_LEFT_DPI = 0
+SVAL_ID_LEFT_SCROLL = 1
+SVAL_ID_RIGHT_DPI = 2
+SVAL_ID_RIGHT_SCROLL = 3
+SVAL_ID_AUTOMOUSE_ENABLE = 4
+SVAL_ID_NATURAL_SCROLL = 7
+SVAL_ID_AXIS_LOCK = 8
+SVAL_ID_LAYER0_COLOR = 32
+SVAL_ID_CURRENT_LAYER = 48
 
 
 class ProtocolSvalboard(BaseProtocol):
-    """Protocol mixin for Svalboard-specific features"""
+    """Protocol mixin for Svalboard-specific features using VIA custom values"""
 
-    # Capability flag
+    # Capability flag - determined from keyboard JSON menus
     is_svalboard = False
-    sval_protocol_version = 0
-    sval_protocol_too_new = False  # True if firmware is newer than GUI supports
     sval_layer_count = 0
 
     # State
-    sval_layer_colors = None  # List of (h, s, v) tuples
+    sval_layer_colors = None  # List of (h, s) tuples
     sval_settings = None      # Dict with all settings
-    sval_dpi_levels = None    # List of DPI values from firmware
-    sval_mh_timers = None     # List of mouse layer timeout values from firmware
-    sval_turbo_scan_limit = None  # Number of turbo scan levels from firmware
+
+    # Configuration (hardcoded for now, could come from firmware)
+    sval_dpi_levels = [400, 800, 1200, 1600, 2000, 2400, 3200, 4000]
+    sval_mh_timers = [100, 200, 300, 500, 750, 1000, 1500, 2000, -1]  # -1 = infinite
+    sval_turbo_scan_limit = 10
 
     def reload_svalboard(self):
-        """Check if svalboard and load settings"""
+        """Check if svalboard (from JSON menus) and load settings via VIA protocol"""
         self.is_svalboard = False
-        self.sval_protocol_version = 0
-        self.sval_protocol_too_new = False
         self.sval_layer_count = 0
         self.sval_layer_colors = None
         self.sval_settings = None
-        self.sval_dpi_levels = None
-        self.sval_mh_timers = None
-        self.sval_turbo_scan_limit = None
 
-        try:
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_PROTOCOL_VERSION),
-                retries=5
-            )
-            # Response: 'sval' + 4-byte version (little-endian)
-            if data[0:4] == b'sval':
-                self.sval_protocol_version = struct.unpack("<I", data[4:8])[0]
-                if self.sval_protocol_version < SVAL_MIN_PROTOCOL_VERSION:
-                    return  # Unsupported old firmware
-                if self.sval_protocol_version > SVAL_MAX_PROTOCOL_VERSION:
-                    self.sval_protocol_too_new = True
-                    return  # Firmware newer than GUI supports
-                self.is_svalboard = True
-            else:
-                return
-        except Exception:
+        # Detect Svalboard from keyboard definition menus
+        if not hasattr(self, 'definition') or not self.definition:
             return
 
-        # Get layer count
-        self._load_layer_count()
-        # Load DPI levels from firmware
-        self._load_dpi_levels()
-        # Load mouse layer timeout options from firmware
-        self._load_mh_timers()
-        # Load current state
+        menus = self.definition.get('menus', [])
+        has_layer_colors = False
+        for menu in menus:
+            if menu.get('label') == 'Layer Colors':
+                has_layer_colors = True
+                break
+
+        if not has_layer_colors:
+            return
+
+        self.is_svalboard = True
+        self.sval_layer_count = self.layers  # Use keymap layer count
+
+        # Load current state via VIA custom values
         self._load_layer_colors()
         self._load_settings()
 
-    def _load_layer_count(self):
-        """Get the number of layers from keyboard"""
-        data = self.usb_send(
-            self.dev,
-            struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_LAYER_COUNT),
-            retries=20
-        )
-        self.sval_layer_count = data[0]
+    def _via_get_value(self, value_id):
+        """Get a custom keyboard value via VIA protocol.
 
-    def _load_dpi_levels(self):
-        """Get the DPI levels table from keyboard"""
+        Returns data bytes on success, or None if firmware doesn't support this value.
+        """
+        # VIA custom value format: [command, channel, value_id]
+        # Channel 0 = keyboard-level custom values
         data = self.usb_send(
             self.dev,
-            struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_DPI_LEVELS),
+            struct.pack("BBB", CMD_VIA_CUSTOM_GET_VALUE, 0, value_id),
             retries=20
         )
-        count = data[0]
-        self.sval_dpi_levels = []
-        for i in range(count):
-            # DPI values are 2 bytes each, little-endian
-            dpi = data[1 + i * 2] | (data[2 + i * 2] << 8)
-            self.sval_dpi_levels.append(dpi)
+        # Check for error response (0xFF instead of echoed command)
+        if data[0] == 0xFF:
+            return None
+        return data[3:]  # Skip command echo, channel, and value_id
 
-    def _load_mh_timers(self):
-        """Get the mouse layer timeout options from keyboard"""
-        data = self.usb_send(
-            self.dev,
-            struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_MH_TIMERS),
-            retries=20
-        )
-        count = data[0]
-        self.sval_mh_timers = []
-        for i in range(count):
-            # Timer values are signed 2 bytes each, little-endian
-            raw = data[1 + i * 2] | (data[2 + i * 2] << 8)
-            # Convert to signed int16
-            if raw >= 0x8000:
-                raw -= 0x10000
-            self.sval_mh_timers.append(raw)
+    def _via_set_value(self, value_id, *values):
+        """Set a custom keyboard value via VIA protocol"""
+        # VIA custom value format: [command, channel, value_id, value_data...]
+        # Channel 0 = keyboard-level custom values
+        msg = struct.pack("BBB", CMD_VIA_CUSTOM_SET_VALUE, 0, value_id) + bytes(values)
+        self.usb_send(self.dev, msg, retries=20)
 
     def _load_layer_colors(self):
-        """Load all layer colors"""
+        """Load all layer colors via VIA custom values"""
         self.sval_layer_colors = []
-        for layer in range(self.sval_layer_count):
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BBB", SVAL_VIA_PREFIX, SVAL_GET_LAYER_HSV, layer),
-                retries=20
-            )
-            self.sval_layer_colors.append((data[0], data[1], data[2]))
+        for layer in range(min(self.sval_layer_count, 16)):
+            data = self._via_get_value(SVAL_ID_LAYER0_COLOR + layer)
+            if data is None:
+                # Firmware doesn't support custom values - use default colors
+                # Spread hues across layers for visual distinction
+                default_hue = (layer * 20) % 256
+                self.sval_layer_colors.append((default_hue, 255))
+            else:
+                # VIA color returns H, S (2 bytes)
+                self.sval_layer_colors.append((data[0], data[1]))
 
     def _load_settings(self):
-        """Load all settings"""
-        data = self.usb_send(
-            self.dev,
-            struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_SETTINGS),
-            retries=20
-        )
+        """Load settings via individual VIA custom value gets"""
+
+        def get_u16(value_id, default=0):
+            data = self._via_get_value(value_id)
+            if data is None or len(data) < 2:
+                return default
+            return data[0] | (data[1] << 8)
+
+        def get_bool(value_id, default=False):
+            data = self._via_get_value(value_id)
+            if data is None or len(data) < 1:
+                return default
+            return bool(data[0])
+
         self.sval_settings = {
-            'left_dpi_index': data[0],
-            'right_dpi_index': data[1],
-            'left_scroll': bool(data[2]),
-            'right_scroll': bool(data[3]),
-            'axis_scroll_lock': bool(data[4]),
-            'auto_mouse': bool(data[5]),
-            'mh_timer_index': data[6],
-            'turbo_scan': data[7],
-            'natural_scroll': bool(data[9]),
+            'left_dpi': get_u16(SVAL_ID_LEFT_DPI, 800),
+            'right_dpi': get_u16(SVAL_ID_RIGHT_DPI, 800),
+            'left_scroll': get_bool(SVAL_ID_LEFT_SCROLL),
+            'right_scroll': get_bool(SVAL_ID_RIGHT_SCROLL),
+            'axis_scroll_lock': get_bool(SVAL_ID_AXIS_LOCK),
+            'auto_mouse': get_bool(SVAL_ID_AUTOMOUSE_ENABLE),
+            'natural_scroll': get_bool(SVAL_ID_NATURAL_SCROLL),
         }
-        self.sval_turbo_scan_limit = data[8]
 
-    def sval_set_layer_color(self, layer, h, s, v):
-        """Set color for a layer"""
-        self.usb_send(
-            self.dev,
-            struct.pack("BBBBBB", SVAL_VIA_PREFIX, SVAL_SET_LAYER_HSV,
-                        layer, h, s, v),
-            retries=20
-        )
-        self.sval_layer_colors[layer] = (h, s, v)
+    def sval_set_layer_color(self, layer, h, s):
+        """Set color for a layer (H, S only)"""
+        self._via_set_value(SVAL_ID_LAYER0_COLOR + layer, h, s)
+        self.sval_layer_colors[layer] = (h, s)
 
-    def _commit_svalboard_layer_color(self, layer, hsv):
+    def _commit_svalboard_layer_color(self, layer, hs):
         """Send a layer color change to the device (used by ChangeManager)."""
-        h, s, v = hsv
-        self.usb_send(
-            self.dev,
-            struct.pack("BBBBBB", SVAL_VIA_PREFIX, SVAL_SET_LAYER_HSV,
-                        layer, h, s, v),
-            retries=20
-        )
-        self.sval_layer_colors[layer] = (h, s, v)
+        h, s = hs
+        self._via_set_value(SVAL_ID_LAYER0_COLOR + layer, h, s)
+        self.sval_layer_colors[layer] = (h, s)
         return True
 
-    def sval_set_settings(self, settings):
-        """Set all settings"""
-        self.usb_send(
-            self.dev,
-            struct.pack("BBBBBBBBBBB", SVAL_VIA_PREFIX, SVAL_SET_SETTINGS,
-                        settings['left_dpi_index'],
-                        settings['right_dpi_index'],
-                        int(settings['left_scroll']),
-                        int(settings['right_scroll']),
-                        int(settings['axis_scroll_lock']),
-                        int(settings['auto_mouse']),
-                        settings['mh_timer_index'],
-                        settings['turbo_scan'],
-                        int(settings['natural_scroll'])),
-            retries=20
-        )
-        self.sval_settings = settings.copy()
+    def sval_set_setting(self, setting_name, value):
+        """Set a single setting"""
+        id_map = {
+            'left_dpi': SVAL_ID_LEFT_DPI,
+            'right_dpi': SVAL_ID_RIGHT_DPI,
+            'left_scroll': SVAL_ID_LEFT_SCROLL,
+            'right_scroll': SVAL_ID_RIGHT_SCROLL,
+            'axis_scroll_lock': SVAL_ID_AXIS_LOCK,
+            'auto_mouse': SVAL_ID_AUTOMOUSE_ENABLE,
+            'natural_scroll': SVAL_ID_NATURAL_SCROLL,
+        }
+        value_id = id_map.get(setting_name)
+        if value_id is None:
+            return
+
+        if setting_name in ('left_dpi', 'right_dpi'):
+            # DPI is 2 bytes little-endian
+            self._via_set_value(value_id, value & 0xFF, (value >> 8) & 0xFF)
+        else:
+            # Boolean settings
+            self._via_set_value(value_id, int(value))
+
+        self.sval_settings[setting_name] = value
 
     def _commit_svalboard_settings(self, settings):
-        """Send settings to the device (used by ChangeManager)."""
-        self.usb_send(
-            self.dev,
-            struct.pack("BBBBBBBBBBB", SVAL_VIA_PREFIX, SVAL_SET_SETTINGS,
-                        settings['left_dpi_index'],
-                        settings['right_dpi_index'],
-                        int(settings['left_scroll']),
-                        int(settings['right_scroll']),
-                        int(settings['axis_scroll_lock']),
-                        int(settings['auto_mouse']),
-                        settings['mh_timer_index'],
-                        settings['turbo_scan'],
-                        int(settings['natural_scroll'])),
-            retries=20
-        )
-        self.sval_settings = settings.copy()
+        """Send all settings to the device (used by ChangeManager)."""
+        for key, value in settings.items():
+            self.sval_set_setting(key, value)
         return True
 
     def sval_reload_settings(self):
-        """Reload just settings (not layer colors)"""
+        """Reload settings"""
         if self.is_svalboard:
             self._load_settings()
 
     def sval_reload_layer_colors(self):
-        """Reload just layer colors"""
+        """Reload layer colors"""
         if self.is_svalboard:
             self._load_layer_colors()
 
@@ -216,11 +180,7 @@ class ProtocolSvalboard(BaseProtocol):
         if not self.is_svalboard:
             return None
         try:
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BB", SVAL_VIA_PREFIX, SVAL_GET_CURRENT_LAYER),
-                retries=5
-            )
+            data = self._via_get_value(SVAL_ID_CURRENT_LAYER)
             return data[0]
         except Exception:
             return None

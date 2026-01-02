@@ -1,62 +1,60 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 from qtpy.QtGui import QFont
 from qtpy.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QLabel, QPlainTextEdit
-
-from protocol.constants import VIAL_PROTOCOL_DYNAMIC, VIAL_PROTOCOL_KEY_OVERRIDE, VIAL_PROTOCOL_ADVANCED_MACROS, \
-    VIAL_PROTOCOL_EXT_MACROS, VIAL_PROTOCOL_QMK_SETTINGS
 
 
 class AboutKeyboard(QDialog):
 
-    def want_min_vial_fw(self, ver):
+    def want_viable(self):
         if self.keyboard.sideload:
             return "unsupported - sideloaded keyboard"
-        if self.keyboard.vial_protocol < 0:
-            return "unsupported - VIA keyboard"
-        if self.keyboard.vial_protocol < ver:
-            return "unsupported - Vial firmware too old"
+        if not self.keyboard.viable_protocol:
+            return "unsupported - no Viable firmware"
         return "unsupported - disabled in firmware"
 
     def about_tap_dance(self):
         if self.keyboard.tap_dance_count > 0:
             return str(self.keyboard.tap_dance_count)
-        return self.want_min_vial_fw(VIAL_PROTOCOL_DYNAMIC)
+        return self.want_viable()
 
     def about_combo(self):
         if self.keyboard.combo_count > 0:
             return str(self.keyboard.combo_count)
-        return self.want_min_vial_fw(VIAL_PROTOCOL_DYNAMIC)
+        return self.want_viable()
 
     def about_key_override(self):
         if self.keyboard.key_override_count > 0:
             return str(self.keyboard.key_override_count)
-        return self.want_min_vial_fw(VIAL_PROTOCOL_KEY_OVERRIDE)
+        return self.want_viable()
 
     def about_alt_repeat_key(self):
         if self.keyboard.alt_repeat_key_count > 0:
             return str(self.keyboard.alt_repeat_key_count)
-        return self.want_min_vial_fw(VIAL_PROTOCOL_KEY_OVERRIDE)
+        return self.want_viable()
 
     def about_macro_delays(self):
-        if self.keyboard.vial_protocol >= VIAL_PROTOCOL_ADVANCED_MACROS:
+        # Viable always supports macro delays
+        if self.keyboard.viable_protocol:
             return "yes"
-        return self.want_min_vial_fw(VIAL_PROTOCOL_ADVANCED_MACROS)
+        return self.want_viable()
 
     def about_macro_ext_keycodes(self):
-        if self.keyboard.vial_protocol >= VIAL_PROTOCOL_EXT_MACROS:
+        # Viable always supports extended macro keycodes
+        if self.keyboard.viable_protocol:
             return "yes"
-        return self.want_min_vial_fw(VIAL_PROTOCOL_EXT_MACROS)
+        return self.want_viable()
 
     def about_qmk_settings(self):
-        if self.keyboard.vial_protocol >= VIAL_PROTOCOL_QMK_SETTINGS:
+        if self.keyboard.viable_protocol:
             if len(self.keyboard.supported_settings) == 0:
                 return "disabled in firmware"
             return "yes"
-        return self.want_min_vial_fw(VIAL_PROTOCOL_QMK_SETTINGS)
+        return self.want_viable()
 
     def about_feature(self, feature_name):
         if feature_name in self.keyboard.supported_features:
             return "yes"
-        return self.want_min_vial_fw(VIAL_PROTOCOL_DYNAMIC)
+        return self.want_viable()
 
     def __init__(self, device):
         super().__init__()
@@ -74,13 +72,10 @@ class AboutKeyboard(QDialog):
         text += "\n"
 
         if self.keyboard.sideload:
-            text += "Sideloaded JSON, Vial functionality is disabled\n\n"
-        elif self.keyboard.vial_protocol < 0:
-            text += "VIA keyboard, Vial functionality is disabled\n\n"
+            text += "Sideloaded JSON, dynamic features are disabled\n\n"
 
         text += "VIA protocol: {}\n".format(self.keyboard.via_protocol)
-        text += "Vial protocol: {}\n".format(self.keyboard.vial_protocol)
-        text += "Vial keyboard ID: {:08X}\n".format(self.keyboard.keyboard_id)
+        text += "Viable protocol: {}\n".format(self.keyboard.viable_protocol or "none")
         text += "\n"
 
         text += "Macro entries: {}\n".format(self.keyboard.macro_count)

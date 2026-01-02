@@ -1,10 +1,21 @@
 import unittest
 import lzma
 import struct
+import os
 
 from keycodes.keycodes import Keycode
 from protocol.keyboard_comm import Keyboard
+from protocol.constants import VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO, VIABLE_DEFINITION_SIZE, \
+    VIABLE_DEFINITION_CHUNK, BUFFER_FETCH_CHUNK
 from util import chunks, MSG_LEN
+
+
+class FakeAppContext:
+    def get_resource(self, name):
+        # Return path to the test resource in the actual resources directory
+        # Go from src/main/python/test to src/main/resources/base
+        base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        return os.path.join(base_path, "resources", "base", name)
 
 LAYOUT_2x2 = """
 {"name":"test","vendorId":"0x0000","productId":"0x1111","lighting":"none","matrix":{"rows":2,"cols":2},"layouts":{"keymap":[["0,0","0,1"],["1,0","1,1"]]}}
@@ -38,17 +49,34 @@ class SimulatedDevice:
     def expect_via_protocol(self, via_protocol):
         self.expect("01", struct.pack(">BH", 1, via_protocol))
 
-    def expect_keyboard_id(self, kbid):
-        self.expect("FE00", struct.pack("<IQ", 0, kbid))
+    def expect_viable_protocol(self, viable_protocol, td_count=0, combo_count=0, ko_count=0, ark_count=0, flags=0):
+        # Request: [0xDF] [0x00]
+        # Response: [0xDF] [0x00] [ver0-3] [td_count] [combo_count] [ko_count] [ark_count] [flags]
+        self.expect(
+            struct.pack("BB", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO),
+            struct.pack("<BBIBBBBB", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO,
+                       viable_protocol, td_count, combo_count, ko_count, ark_count, flags)
+        )
 
     def expect_layout(self, layout):
         compressed = lzma.compress(layout.encode("utf-8"))
-        self.expect("FE01", struct.pack("<I", len(compressed)))
-        for idx, chunk in enumerate(chunks(compressed, 32)):
+        # Request: [0xDF] [0x0D]
+        # Response: [0xDF] [0x0D] [size0-3]
+        self.expect(
+            struct.pack("BB", VIABLE_PREFIX, VIABLE_DEFINITION_SIZE),
+            struct.pack("<BBI", VIABLE_PREFIX, VIABLE_DEFINITION_SIZE, len(compressed))
+        )
+        # Fetch chunks using offset-based protocol
+        offset = 0
+        while offset < len(compressed):
+            chunk = compressed[offset:offset + BUFFER_FETCH_CHUNK]
+            # Request: [0xDF] [0x0E] [offset_lo] [offset_hi]
+            # Response: [0xDF] [0x0E] [offset_lo] [offset_hi] [28 bytes data]
             self.expect(
-                struct.pack("<BBI", 0xFE, 0x02, idx),
-                chunk
+                struct.pack("<BBH", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset),
+                struct.pack("<BBH", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset) + chunk
             )
+            offset += BUFFER_FETCH_CHUNK
 
     def expect_layers(self, layers):
         self.expect("11", struct.pack("BB", 0x11, layers))
@@ -65,9 +93,16 @@ class SimulatedDevice:
             self.expect(query, query + chunk)
 
     def expect_encoders(self, encoders):
+        # VIA3 encoder get: [0x14] [layer] [encoder_id] [direction]
+        # Response: [0x14] [layer] [encoder_id] [keycode_hi] [keycode_lo]
         for l, layer in enumerate(encoders):
             for e, enc in enumerate(layer):
-                self.expect(struct.pack("BBBB", 0xFE, 3, l, e), struct.pack(">HH", enc[0], enc[1]))
+                # direction 0 (CW)
+                self.expect(struct.pack("BBBB", 0x14, l, e, 0),
+                           struct.pack(">BBBH", 0x14, l, e, enc[0]))
+                # direction 1 (CCW)
+                self.expect(struct.pack("BBBB", 0x14, l, e, 1),
+                           struct.pack(">BBBH", 0x14, l, e, enc[1]))
 
     @staticmethod
     def sim_send(dev, data, retries=1):
@@ -97,11 +132,16 @@ class SimulatedDevice:
 
 class TestKeyboard(unittest.TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        from editor.qmk_settings import QmkSettings
+        QmkSettings.initialize(FakeAppContext())
+
     @staticmethod
     def prepare_keyboard(layout, keymap, encoders=None):
         dev = SimulatedDevice()
-        dev.expect_via_protocol(9)
-        dev.expect_keyboard_id(0)
+        dev.expect_via_protocol(12)
+        dev.expect_viable_protocol(1)  # Viable protocol version 1
         dev.expect_layout(layout)
         dev.expect_layers(len(keymap))
 
@@ -109,6 +149,12 @@ class TestKeyboard(unittest.TestCase):
         dev.expect("0C", "0C00")
         # macro buffer size
         dev.expect("0D", "0D0000")
+
+        # reload_dynamic queries viable protocol again
+        dev.expect_viable_protocol(1)
+
+        # QMK settings query via 0xDF protocol (return 0xFFFF to indicate no more settings)
+        dev.expect("DF100000", "DF10FFFF")
 
         dev.expect_keymap(keymap)
         if encoders is not None:
@@ -191,6 +237,7 @@ class TestKeyboard(unittest.TestCase):
         kb, dev = self.prepare_keyboard(LAYOUT_ENCODER, [[[1]], [[2]], [[3]], [[4]]], [[(10, 11)], [(12, 13)], [(14, 15)], [(16, 17)]])
         self.assertEqual(kb.encoder_layout[(1, 0, 0)], Keycode.serialize(12))
         self.assertEqual(kb.encoder_layout[(1, 0, 1)], Keycode.serialize(13))
-        dev.expect("FE040100010020", "")
+        # VIA3 encoder set: [0x15] [layer] [encoder_id] [direction] [keycode_hi] [keycode_lo]
+        dev.expect("150100010020", "")
         kb.set_encoder(1, 0, 1, Keycode.serialize(0x20))
         self.assertEqual(kb.encoder_layout[(1, 0, 1)], Keycode.serialize(0x20))

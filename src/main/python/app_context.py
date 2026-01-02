@@ -78,4 +78,10 @@ class ApplicationContext:
 
     def get_resource(self, name):
         """Get the path to a resource file."""
-        return os.path.join(_get_dist_dir(), name)
+        try:
+            __compiled__  # Check if we're compiled
+            # Frozen: resources are in resources/base/ subdirectory
+            return os.path.join(_get_dist_dir(), 'resources', 'base', name)
+        except NameError:
+            # Development: resources are directly in the dist dir (which is resources/base)
+            return os.path.join(_get_dist_dir(), name)

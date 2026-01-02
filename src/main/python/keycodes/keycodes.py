@@ -8,6 +8,74 @@ from keycodes.keycodes_v5 import keycodes_v5
 from keycodes.keycodes_v6 import keycodes_v6
 
 
+def translate_keycode_v5_to_v6(code):
+    """Translate a v5 keycode to v6 format.
+
+    v5 (VIA protocol < 12) used different base addresses for many keycodes.
+    v6 (VIA protocol >= 12) uses the current QMK keycode layout.
+    """
+    # Vial saved -1 for empty slots - translate to KC_NO
+    if code == -1:
+        return 0  # KC_NO
+
+    # QK_MACRO: 0x5F12-0x5FFF (M0-M237) -> 0x7700-0x77ED
+    # Note: v5 macros M238-M255 (0x6000-0x6011) overlap with MOD_TAP range.
+    # Since mod-taps are more commonly used than high macro numbers,
+    # we only translate the non-overlapping macro range here.
+    if 0x5F12 <= code <= 0x5FFF:
+        macro_idx = code - 0x5F12
+        # v6 only has 128 macros (0-127), cap at max
+        if macro_idx > 127:
+            macro_idx = 127
+        return 0x7700 + macro_idx
+
+    # QK_MOD_TAP: 0x6000-0x7FFF -> 0x2000-0x3FFF
+    if 0x6000 <= code <= 0x7FFF:
+        return (code - 0x6000) + 0x2000
+
+    # QK_LAYER_MOD: 0x5900-0x59FF -> 0x5000-0x50FF
+    if 0x5900 <= code <= 0x59FF:
+        return (code - 0x5900) + 0x5000
+
+    # QK_LAYER_TAP_TOGGLE: 0x5800-0x58FF -> 0x52C0-0x52DF (only 32 entries)
+    if 0x5800 <= code <= 0x58FF:
+        layer = code & 0x1F  # Only 5 bits for layer
+        return 0x52C0 + layer
+
+    # QK_ONE_SHOT_MOD: 0x5500-0x55FF -> 0x52A0-0x52BF (only 32 entries)
+    if 0x5500 <= code <= 0x55FF:
+        mod = code & 0x1F
+        return 0x52A0 + mod
+
+    # QK_ONE_SHOT_LAYER: 0x5400-0x54FF -> 0x5280-0x529F (only 32 entries)
+    if 0x5400 <= code <= 0x54FF:
+        layer = code & 0x1F
+        return 0x5280 + layer
+
+    # QK_TOGGLE_LAYER: 0x5300-0x53FF -> 0x5260-0x527F (only 32 entries)
+    if 0x5300 <= code <= 0x53FF:
+        layer = code & 0x1F
+        return 0x5260 + layer
+
+    # QK_DEF_LAYER: 0x5200-0x52FF -> 0x5240-0x525F (only 32 entries)
+    if 0x5200 <= code <= 0x52FF:
+        layer = code & 0x1F
+        return 0x5240 + layer
+
+    # QK_MOMENTARY: 0x5100-0x51FF -> 0x5220-0x523F (only 32 entries)
+    if 0x5100 <= code <= 0x51FF:
+        layer = code & 0x1F
+        return 0x5220 + layer
+
+    # QK_TO: 0x5000-0x50FF -> 0x5200-0x521F (only 32 entries)
+    if 0x5000 <= code <= 0x50FF:
+        layer = code & 0x1F
+        return 0x5200 + layer
+
+    # No translation needed
+    return code
+
+
 class Keycode:
 
     masked_keycodes = set()
@@ -527,11 +595,25 @@ KEYCODES_QUANTUM = [
     K("QK_REPEAT_KEY", "Repeat", "Repeats the last pressed key", alias=["QK_REP"], requires_feature="repeat_key"),
     K("QK_ALT_REPEAT_KEY", "Alt\nRepeat", "Alt repeats the last pressed key", alias=["QK_AREP"], requires_feature="repeat_key"),
 
+    K("QK_LEADER", "Leader", "Start a leader key sequence", alias=["QK_LEAD"]),
     K("QK_LOCK", "Key\nLock", "Hold down the next key pressed until pressed again"),
     K("QK_SECURE_LOCK", "Secure\nLock", "Lock the keyboard"),
     K("QK_SECURE_UNLOCK", "Secure\nUnlock", "Unlock the keyboard"),
     K("QK_SECURE_TOGGLE", "Secure\nToggle", "Toggle secure state"),
     K("QK_SECURE_REQUEST", "Secure\nRequest", "Request secure unlock"),
+
+    K("QK_ONE_SHOT_ON", "OS\nOn", "Enable one-shot keys", alias=["OS_ON"]),
+    K("QK_ONE_SHOT_OFF", "OS\nOff", "Disable one-shot keys", alias=["OS_OFF"]),
+    K("QK_ONE_SHOT_TOGGLE", "OS\nToggle", "Toggle one-shot keys", alias=["OS_TOGG"]),
+
+    K("SH_T(kc)", "SH_T\n(kc)", "Tap for keycode, hold for swap hands", masked=True),
+    K("SH_TOGG", "Swap\nToggle", "Toggle swap hands on/off"),
+    K("SH_TT", "Swap\nTT", "Tap-toggle swap hands"),
+    K("SH_MON", "Swap\nMom On", "Momentary swap on"),
+    K("SH_MOFF", "Swap\nMom Off", "Momentary swap off"),
+    K("SH_ON", "Swap\nOn", "Turn swap hands on"),
+    K("SH_OFF", "Swap\nOff", "Turn swap hands off"),
+    K("SH_OS", "Swap\nOS", "One-shot swap hands"),
 ]
 
 KEYCODES_JOYSTICK = [
@@ -1013,7 +1095,7 @@ def recreate_keycodes():
 
 def create_user_keycodes():
     KEYCODES_USER.clear()
-    for x in range(16):
+    for x in range(64):
         KEYCODES_USER.append(
             Keycode(
                 "USER{:02}".format(x),
@@ -1025,6 +1107,7 @@ def create_user_keycodes():
 
 def create_custom_user_keycodes(custom_keycodes):
     KEYCODES_USER.clear()
+    # Create keycodes for custom entries
     for x, c_keycode in enumerate(custom_keycodes):
         KEYCODES_USER.append(
             Keycode(
@@ -1034,6 +1117,25 @@ def create_custom_user_keycodes(custom_keycodes):
                 alias=[c_keycode.get("name", "USER{:02}".format(x))]
             )
         )
+    # Always create at least 64 user keycodes for compatibility
+    for x in range(len(custom_keycodes), 64):
+        KEYCODES_USER.append(
+            Keycode(
+                "USER{:02}".format(x),
+                "USER{:02}".format(x),
+                "User keycode {}".format(x)
+            )
+        )
+
+
+def create_macro_keycodes(count=128):
+    """Create default macro keycodes for .vil/.svil loading compatibility"""
+    KEYCODES_MACRO.clear()
+    for x in range(count):
+        qmk_id = "M{}".format(x)
+        KEYCODES_MACRO.append(Keycode(qmk_id, qmk_id))
+    for x, kc in enumerate(KEYCODES_MACRO_BASE):
+        KEYCODES_MACRO.append(kc)
 
 
 def create_midi_keycodes(midiSettingLevel):
@@ -1049,7 +1151,9 @@ def create_midi_keycodes(midiSettingLevel):
 def recreate_keyboard_keycodes(keyboard):
     """ Generates keycodes based on information the keyboard provides (e.g. layer keycodes, macros) """
 
-    Keycode.protocol = keyboard.vial_protocol
+    # VIA protocol 12+ uses v6 keycode format (QK_MOD_TAP at 0x2000)
+    # Earlier protocols used v5 format (QK_MOD_TAP at 0x6000)
+    Keycode.protocol = 6 if keyboard.via_protocol >= 12 else 5
 
     layers = keyboard.layers
 
@@ -1065,8 +1169,8 @@ def recreate_keyboard_keycodes(keyboard):
             "Locks the current layer", alias=["QK_LLCK"], requires_feature="layer_lock"))
 
     if layers >= 4:
-        KEYCODES_LAYERS.append(Keycode("FN_MO13", "Fn1\n(Fn3)"))
-        KEYCODES_LAYERS.append(Keycode("FN_MO23", "Fn2\n(Fn3)"))
+        KEYCODES_LAYERS.append(Keycode("TL_LOWR", "Tri\nLower", "Tri-layer lower (MO(1), activates layer 3 with TL_UPPR)", alias=["FN_MO13"]))
+        KEYCODES_LAYERS.append(Keycode("TL_UPPR", "Tri\nUpper", "Tri-layer upper (MO(2), activates layer 3 with TL_LOWR)", alias=["FN_MO23"]))
 
     KEYCODES_LAYERS.extend(
         generate_keycodes_for_mask("MO",
@@ -1125,4 +1229,7 @@ def recreate_keyboard_keycodes(keyboard):
         kc.hidden = not kc.is_supported_by(keyboard)
 
 
+# Initialize USER and MACRO keycodes at module load for .vil/.svil loading compatibility
+create_user_keycodes()
+create_macro_keycodes()
 recreate_keycodes()

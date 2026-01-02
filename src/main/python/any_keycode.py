@@ -4,7 +4,7 @@ import simpleeval
 import operator
 
 from keycodes.keycodes import KEYCODES_SPECIAL, KEYCODES_BASIC, KEYCODES_SHIFTED, KEYCODES_ISO, KEYCODES_BACKLIGHT, \
-    KEYCODES_MEDIA, KEYCODES_USER, Keycode
+    KEYCODES_MEDIA, KEYCODES_USER, KEYCODES_MACRO, KEYCODES_TAP_DANCE, Keycode
 
 r = Keycode.resolve
 
@@ -41,6 +41,7 @@ def OSM(mod): return (r("QK_ONE_SHOT_MOD") | ((mod)&0xFF))
 def TT(layer): return (r("QK_LAYER_TAP_TOGGLE") | ((layer)&0xFF))
 def MT(mod, kc): return (r("QK_MOD_TAP") | (((mod)&0x1F) << 8) | ((kc)&0xFF))
 def TD(n): return (r("QK_TAP_DANCE") | ((n)&0xFF))
+def SH_T(kc): return (r("QK_SWAP_HANDS") | ((kc)&0xFF))
 
 
 def LCTL_T(kc): return MT(r("MOD_LCTL"), kc)
@@ -83,7 +84,7 @@ functions = {
     "C_S": C_S,
     "LCA": LCA, "LSA": LSA, "LAG": LAG, "RSA": RSA, "RCS": RCS, "SAGR": RSA,
     "C": LCTL, "S": LSFT, "A": LALT, "G": LGUI,
-    "LT": LT, "TO": TO, "MO": MO, "DF": DF, "TG": TG, "OSL": OSL, "LM": LM, "OSM": OSM, "TT": TT, "MT": MT,
+    "LT": LT, "TO": TO, "MO": MO, "DF": DF, "TG": TG, "OSL": OSL, "LM": LM, "OSM": OSM, "TT": TT, "MT": MT, "SH_T": SH_T,
     "LCTL_T": LCTL_T, "RCTL_T": RCTL_T, "CTL_T": LCTL_T,
     "LSFT_T": LSFT_T, "RSFT_T": RSFT_T, "SFT_T": LSFT_T,
     "LALT_T": LALT_T, "RALT_T": RALT_T, "LOPT_T": LALT_T, "ROPT_T": RALT_T, "ALGR_T": RALT_T, "ALT_T": LALT_T, "OPT_T": LALT_T,
@@ -117,7 +118,7 @@ class AnyKeycode:
 
     def prepare_names(self):
         for kc in KEYCODES_SPECIAL + KEYCODES_BASIC + KEYCODES_SHIFTED + KEYCODES_ISO + KEYCODES_BACKLIGHT + \
-                  KEYCODES_MEDIA + KEYCODES_USER:
+                  KEYCODES_MEDIA + KEYCODES_USER + KEYCODES_MACRO + KEYCODES_TAP_DANCE:
             for qmk_id in kc.alias:
                 self.names[qmk_id] = Keycode.resolve(kc.qmk_id)
         macros = dict()

@@ -584,6 +584,7 @@ class keycodes_v6:
         "QK_LAYER_LOCK": 0x7C7B,
 
         "QK_KB": 0x7E00,
+        "QK_USER": 0x7E40,
 
         "QMK_LM_SHIFT": 5,
         "QMK_LM_MASK": 0x1F,
@@ -714,7 +715,10 @@ class keycodes_v6:
         "STN_RES1": 0x74D3,
         "STN_RES2": 0x74D4,
         "STN_PWR": 0x74D5,
-        "STN_FN": 0x74EA,
+        "STN_FN": 0x74C0,
+
+        # Leader Key
+        "QK_LEADER": 0x7C58,
 
         # Lock and Secure
         "QK_LOCK": 0x7C59,
@@ -722,6 +726,26 @@ class keycodes_v6:
         "QK_SECURE_UNLOCK": 0x7C61,
         "QK_SECURE_TOGGLE": 0x7C62,
         "QK_SECURE_REQUEST": 0x7C63,
+
+        # One-Shot toggles
+        "QK_ONE_SHOT_ON": 0x7C5A,
+        "QK_ONE_SHOT_OFF": 0x7C5B,
+        "QK_ONE_SHOT_TOGGLE": 0x7C5C,
+
+        # Tri-Layer (aliases for FN_MO13/FN_MO23)
+        "TL_LOWR": 0x7C77,
+        "TL_UPPR": 0x7C78,
+
+        # Swap Hands
+        "QK_SWAP_HANDS": 0x5600,
+        "SH_T(kc)": 0x5600,
+        "SH_TOGG": 0x56F0,
+        "SH_TT": 0x56F1,
+        "SH_MON": 0x56F2,
+        "SH_MOFF": 0x56F3,
+        "SH_OFF": 0x56F4,
+        "SH_ON": 0x56F5,
+        "SH_OS": 0x56F6,
     }
 
     masked = set()
@@ -744,7 +768,7 @@ for x in range(16):
     keycodes_v6.kc["LT{}(kc)".format(x)] = keycodes_v6.kc["QK_LAYER_TAP"] | (((x) & 0xF) << 8)
 
 for x in range(64):
-    keycodes_v6.kc["USER{:02}".format(x)] = keycodes_v6.kc["QK_KB"] + x
+    keycodes_v6.kc["USER{:02}".format(x)] = keycodes_v6.kc["QK_USER"] + x
 
 for name, val in keycodes_v6.kc.items():
     if name.endswith("(kc)"):

@@ -1,4 +1,5 @@
 import sys
+import logging
 
 from qtpy.QtCore import QObject, Signal
 
@@ -64,20 +65,27 @@ class Autorefresh(QObject):
         self.thread.load_via_stack(data)
 
     def select_device(self, idx):
+        logging.debug(" select_device(%d) called", idx)
         if self.current_device is not None:
             self.current_device.close()
         self.current_device = None
         if idx >= 0:
             self.current_device = self.devices[idx]
+            logging.debug(" Selected device: %s", self.current_device.title() if hasattr(self.current_device, 'title') else str(self.current_device))
 
         if self.current_device is not None:
             if self.current_device.sideload:
+                logging.debug(" Opening sideload device...")
                 self.current_device.open(self.thread.sideload_json)
             elif self.current_device.via_stack:
+                logging.debug(" Opening via_stack device...")
                 self.current_device.open(self.thread.via_stack_json["definitions"][self.current_device.via_id])
             else:
+                logging.debug(" Opening normal device...")
                 self.current_device.open(None)
+            logging.debug(" Device opened successfully")
         self.thread.set_device(self.current_device)
+        logging.debug(" select_device() complete")
 
     def on_devices_updated(self, devices, changed):
         self.devices = devices

@@ -60,9 +60,9 @@ class MatrixTest(BasicEditor):
         self.keyboardWidget.setEnabled(self.valid())
 
     def valid(self):
-        # Check if vial protocol is v3 or later
+        # Check if viable protocol is present
         return isinstance(self.device, VialKeyboard) and \
-               (self.device.keyboard and self.device.keyboard.vial_protocol >= VIAL_PROTOCOL_MATRIX_TESTER) and \
+               (self.device.keyboard and self.device.keyboard.viable_protocol) and \
                ((self.device.keyboard.cols // 8 + 1) * self.device.keyboard.rows <= 28)
 
     def reset_keyboard_widget(self):

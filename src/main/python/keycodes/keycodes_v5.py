@@ -606,6 +606,9 @@ class keycodes_v5:
         "QK_AUDIO_VOICE_NEXT": 0x999c5,
         "QK_AUDIO_VOICE_PREVIOUS": 0x999c6,
 
+        # Leader Key (fake value for v5)
+        "QK_LEADER": 0x99a58,
+
         # Lock/Secure keycodes
         "QK_LOCK": 0x999c7,
         "QK_SECURE_LOCK": 0x999c8,
@@ -726,6 +729,26 @@ class keycodes_v5:
         "STN_RES2": 0x99a39,
         "STN_PWR": 0x99a3a,
         "STN_FN": 0x99a3b,
+
+        # One-Shot toggles (fake values for v5)
+        "QK_ONE_SHOT_ON": 0x99a40,
+        "QK_ONE_SHOT_OFF": 0x99a41,
+        "QK_ONE_SHOT_TOGGLE": 0x99a42,
+
+        # Tri-Layer (aliases for FN_MO13/FN_MO23)
+        "TL_LOWR": 0x5F10,
+        "TL_UPPR": 0x5F11,
+
+        # Swap Hands (fake values for v5)
+        "QK_SWAP_HANDS": 0x99a50,
+        "SH_T(kc)": 0x99a50,
+        "SH_TOGG": 0x99a51,
+        "SH_TT": 0x99a52,
+        "SH_MON": 0x99a53,
+        "SH_MOFF": 0x99a54,
+        "SH_OFF": 0x99a55,
+        "SH_ON": 0x99a56,
+        "SH_OS": 0x99a57,
     }
 
     masked = set()

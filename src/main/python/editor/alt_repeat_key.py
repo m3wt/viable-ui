@@ -5,7 +5,6 @@ from qtpy.QtWidgets import (QWidget, QSizePolicy, QGridLayout, QHBoxLayout, QVBo
                              QLabel, QCheckBox, QScrollArea, QPushButton, QToolTip)
 
 from change_manager import ChangeManager, AltRepeatKeyChange
-from protocol.constants import VIAL_PROTOCOL_DYNAMIC
 from widgets.key_widget import KeyWidget
 from tabbed_keycodes import TabbedKeycodes
 from protocol.alt_repeat_key import AltRepeatKeyOptions, AltRepeatKeyEntry
@@ -370,7 +369,7 @@ class AltRepeatKey(BasicEditor):
 
     def valid(self):
         return isinstance(self.device, VialKeyboard) and \
-               (self.device.keyboard and self.device.keyboard.vial_protocol >= VIAL_PROTOCOL_DYNAMIC
+               (self.device.keyboard and self.device.keyboard.viable_protocol
                 and self.device.keyboard.alt_repeat_key_count > 0)
 
     def on_change(self, idx):

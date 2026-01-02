@@ -11,6 +11,8 @@ pkgs.mkShell {
       keyboard
       simpleeval
       certifi
+      nuitka
+      ordered-set
     ]))
 
     # HID access

@@ -357,12 +357,12 @@ class SvalboardSettingChange(Change):
 
 
 class SvalboardLayerColorChange(Change):
-    """Change to a Svalboard layer color."""
+    """Change to a Svalboard layer color (h, s only - firmware controls V)."""
 
-    def __init__(self, layer: int, old_hsv: Tuple[int, int, int], new_hsv: Tuple[int, int, int]):
+    def __init__(self, layer: int, old_hs: Tuple[int, int], new_hs: Tuple[int, int]):
         self.layer = layer
-        self.old_value = old_hsv
-        self.new_value = new_hsv
+        self.old_value = old_hs
+        self.new_value = new_hs
 
     def key(self) -> Tuple:
         return ('svalboard_layer_color', self.layer)
@@ -384,3 +384,34 @@ class SvalboardLayerColorChange(Change):
 
     def __repr__(self):
         return f"SvalboardLayerColorChange(layer={self.layer}, {self.old_value}->{self.new_value})"
+
+
+class CustomValueChange(Change):
+    """Change to a VIA custom value (keyboard-specific settings)."""
+
+    def __init__(self, channel: int, value_id: int, old_value: bytes, new_value: bytes):
+        self.channel = channel
+        self.value_id = value_id
+        self.old_value = old_value
+        self.new_value = new_value
+
+    def key(self) -> Tuple:
+        return ('custom_value', self.channel, self.value_id)
+
+    def apply(self, keyboard) -> bool:
+        return keyboard._commit_custom_value(self.channel, self.value_id, self.new_value)
+
+    def revert(self, keyboard) -> bool:
+        return keyboard._commit_custom_value(self.channel, self.value_id, self.old_value)
+
+    def restore_local(self, keyboard, use_old: bool) -> None:
+        value = self.old_value if use_old else self.new_value
+        if hasattr(keyboard, 'custom_values'):
+            keyboard.custom_values[(self.channel, self.value_id)] = value
+
+    def merge(self, other: 'CustomValueChange') -> bool:
+        self.new_value = other.new_value
+        return True
+
+    def __repr__(self):
+        return f"CustomValueChange(ch={self.channel}, id={self.value_id}, {len(self.old_value)}->{len(self.new_value)} bytes)"

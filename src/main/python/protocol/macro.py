@@ -247,16 +247,15 @@ class ProtocolMacro(BaseProtocol):
         """
         out = b""
         for action in macro:
-            out += action.serialize(self.vial_protocol)
+            out += action.serialize(self.viable_protocol)
         return out
 
     def macro_deserialize(self, data):
         """
         Deserialize a single macro
         """
-        if self.vial_protocol >= VIAL_PROTOCOL_ADVANCED_MACROS:
-            return macro_deserialize_v2(data)
-        return macro_deserialize_v1(data)
+        # Viable always uses v2 format
+        return macro_deserialize_v2(data)
 
     def macros_serialize(self, macros):
         """

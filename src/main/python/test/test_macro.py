@@ -32,23 +32,9 @@ class TestMacro(unittest.TestCase):
     def test_replace_string(self):
         self.assertEqual(replace_with_string([KeyTap(KC_A), KeyTap(KC_B)]), [KeyString("ab")])
 
-    def test_serialize_v1(self):
+    def test_serialize(self):
         kb = DummyKeyboard(None)
-        kb.vial_protocol = 1
-        data = kb.macro_serialize([ActionText("Hello"), ActionTap(["KC_A", "KC_B", "KC_C"]), ActionText("World"),
-                                   ActionDown(["KC_C", "KC_B", "KC_A"])])
-        self.assertEqual(data, b"Hello\x01\x04\x01\x05\x01\x06World\x02\x06\x02\x05\x02\x04")
-
-    def test_deserialize_v1(self):
-        kb = DummyKeyboard(None)
-        kb.vial_protocol = 1
-        macro = kb.macro_deserialize(b"Hello\x01\x04\x01\x05\x01\x06World\x02\x06\x02\x05\x02\x04")
-        self.assertEqual(macro, [ActionText("Hello"), ActionTap(["KC_A", "KC_B", "KC_C"]), ActionText("World"),
-                                 ActionDown(["KC_C", "KC_B", "KC_A"])])
-
-    def test_serialize_v2(self):
-        kb = DummyKeyboard(None)
-        kb.vial_protocol = 2
+        kb.viable_protocol = 1
         data = kb.macro_serialize([ActionText("Hello"), ActionTap(["KC_A", "KC_B", "KC_C"]), ActionText("World"),
                                    ActionDown(["KC_C", "KC_B", "KC_A"]), ActionDelay(1000)])
         self.assertEqual(data, b"Hello\x01\x01\x04\x01\x01\x05\x01\x01\x06World\x01\x02\x06\x01\x02\x05\x01\x02\x04"
@@ -66,9 +52,9 @@ class TestMacro(unittest.TestCase):
         self.assertEqual(data, b"Hello\x01\x01\x04\x01\x01\x05\x01\x01\x06World\x01\x02\x06\x01\x02\x05\x01\x02\x04"
                                b"\x01\x04\x02\x02")
 
-    def test_deserialize_v2(self):
+    def test_deserialize(self):
         kb = DummyKeyboard(None)
-        kb.vial_protocol = 2
+        kb.viable_protocol = 1
         macro = kb.macro_deserialize(b"Hello\x01\x01\x04\x01\x01\x05\x01\x01\x06World\x01\x02\x06\x01\x02\x05"
                                      b"\x01\x02\x04\x01\x04\xEC\x04")
         self.assertEqual(macro, [ActionText("Hello"), ActionTap(["KC_A", "KC_B", "KC_C"]), ActionText("World"),
@@ -112,7 +98,7 @@ class TestMacro(unittest.TestCase):
 
     def test_twobyte_keycodes(self):
         kb = DummyKeyboard(None)
-        kb.vial_protocol = 2
+        kb.viable_protocol = 1
         # TODO remove once keycodes are properly owned by the Keyboard object
         kb.tap_dance_count = 0
         recreate_keyboard_keycodes(kb)
@@ -133,7 +119,7 @@ class TestMacro(unittest.TestCase):
 
     def test_twobyte_with_zeroes(self):
         kb = DummyKeyboard(None)
-        kb.vial_protocol = 2
+        kb.viable_protocol = 1
         data = kb.macro_serialize([ActionTap([Keycode.serialize(0xA000), Keycode.serialize(0xB100), Keycode.serialize(0xC200)])])
         self.assertEqual(data, b"\x01\x05\xA0\xFF\x01\x05\xB1\xFF\x01\x05\xC2\xFF")
 

@@ -2,10 +2,9 @@
 from qtpy import QtCore
 from qtpy.QtCore import Signal, QObject, Qt
 from qtpy.QtWidgets import (QWidget, QSizePolicy, QHBoxLayout, QVBoxLayout, QLabel,
-                             QScrollArea, QPushButton)
+                             QScrollArea, QPushButton, QSpinBox, QCheckBox)
 
 from change_manager import ChangeManager, ComboChange
-from protocol.constants import VIAL_PROTOCOL_DYNAMIC
 from widgets.key_widget import KeyWidget
 from tabbed_keycodes import TabbedKeycodes
 from vial_device import VialKeyboard
@@ -14,7 +13,7 @@ from widgets.flowlayout import FlowLayout
 
 
 class ComboEntryUI(QObject):
-    """A single combo entry: small index + 4 input keys + arrow + output key"""
+    """A single combo entry: small index + 4 input keys + arrow + output key + custom term"""
 
     key_changed = Signal(int)  # emits combo index
     deleted = Signal(int)  # emits combo index
@@ -25,24 +24,29 @@ class ComboEntryUI(QObject):
         self.idx = idx
         self.kc_inputs = []
         self.all_keys = []  # All keys in order for auto-advance
+        self.custom_combo_term = 0x8000  # Default: enabled, no custom term
 
-        # Main horizontal layout for the combo
-        self.container = QHBoxLayout()
-        self.container.setSpacing(2)
-        self.container.setContentsMargins(4, 4, 4, 4)
+        # Main vertical layout for the combo
+        self.main_layout = QVBoxLayout()
+        self.main_layout.setSpacing(2)
+        self.main_layout.setContentsMargins(4, 4, 4, 4)
+
+        # Top row: keys
+        self.keys_row = QHBoxLayout()
+        self.keys_row.setSpacing(2)
 
         # Small superscript-style index number
         self.index_label = QLabel()
         self.index_label.setStyleSheet("font-size: 9px; color: palette(text); min-width: 20px;")
         self.index_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
         self.update_index_label()
-        self.container.addWidget(self.index_label)
+        self.keys_row.addWidget(self.index_label)
 
         # 4 input keys
         for x in range(4):
             kc_widget = KeyWidget()
             kc_widget.changed.connect(lambda idx=x: self.on_key_changed_at(idx))
-            self.container.addWidget(kc_widget)
+            self.keys_row.addWidget(kc_widget)
             self.kc_inputs.append(kc_widget)
             self.all_keys.append(kc_widget)
 
@@ -50,19 +54,50 @@ class ComboEntryUI(QObject):
         arrow = QLabel("\u2192")  # →
         arrow.setStyleSheet("font-size: 16px; color: palette(text);")
         arrow.setAlignment(Qt.AlignCenter)
-        self.container.addWidget(arrow)
+        self.keys_row.addWidget(arrow)
 
         # Output key
         self.kc_output = KeyWidget()
         self.kc_output.changed.connect(lambda: self.on_key_changed_at(4))
-        self.container.addWidget(self.kc_output)
+        self.keys_row.addWidget(self.kc_output)
         self.all_keys.append(self.kc_output)
+
+        self.main_layout.addLayout(self.keys_row)
+
+        # Bottom row: custom combo term (optional)
+        self.term_row = QHBoxLayout()
+        self.term_row.setSpacing(4)
+
+        self.term_label = QLabel("Term:")
+        self.term_label.setStyleSheet("font-size: 9px; color: palette(text);")
+        self.term_row.addWidget(self.term_label)
+
+        self.term_spinbox = QSpinBox()
+        self.term_spinbox.setRange(0, 32767)
+        self.term_spinbox.setSuffix(" ms")
+        self.term_spinbox.setSpecialValueText("default")
+        self.term_spinbox.setToolTip("Custom combo term (0 = use global default)")
+        self.term_spinbox.setFixedWidth(80)
+        self.term_spinbox.valueChanged.connect(self.on_term_changed)
+        self.term_row.addWidget(self.term_spinbox)
+
+        self.enabled_label = QLabel("On:")
+        self.enabled_label.setStyleSheet("font-size: 9px; color: palette(text);")
+        self.term_row.addWidget(self.enabled_label)
+
+        self.enabled_checkbox = QCheckBox()
+        self.enabled_checkbox.setChecked(True)
+        self.enabled_checkbox.stateChanged.connect(self.on_enabled_changed)
+        self.term_row.addWidget(self.enabled_checkbox)
+
+        self.term_row.addStretch()
+        self.main_layout.addLayout(self.term_row)
 
         # Create the widget
         self.widget_container = QWidget()
         self.widget_container.setObjectName("comboEntry")
         self.widget_container.setStyleSheet("#comboEntry { border: 2px solid transparent; }")
-        self.widget_container.setLayout(self.container)
+        self.widget_container.setLayout(self.main_layout)
         self.widget_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     def update_index_label(self):
@@ -82,21 +117,43 @@ class ComboEntryUI(QObject):
         objs = self.kc_inputs + [self.kc_output]
         for o in objs:
             o.blockSignals(True)
+        self.term_spinbox.blockSignals(True)
+        self.enabled_checkbox.blockSignals(True)
 
         for x in range(4):
             self.kc_inputs[x].set_keycode(data[x])
         self.kc_output.set_keycode(data[4])
 
+        # Load custom_combo_term (6th element)
+        # Bit 15 = enabled, bits 0-14 = timing
+        if len(data) > 5:
+            self.custom_combo_term = data[5]
+            term_value = self.custom_combo_term & 0x7FFF
+            self.term_spinbox.setValue(term_value)
+            self.enabled_checkbox.setChecked(bool(self.custom_combo_term & 0x8000))
+        else:
+            # Old format without custom_combo_term
+            self.custom_combo_term = 0x8000  # enabled, default timing
+            self.term_spinbox.setValue(0)
+            self.enabled_checkbox.setChecked(True)
+
         for o in objs:
             o.blockSignals(False)
+        self.term_spinbox.blockSignals(False)
+        self.enabled_checkbox.blockSignals(False)
 
     def save(self):
+        # Use checkbox for enabled bit
+        term = self.term_spinbox.value() & 0x7FFF  # Get timing bits
+        if self.enabled_checkbox.isChecked():
+            term |= 0x8000  # Set enabled bit
         return (
             self.kc_inputs[0].keycode,
             self.kc_inputs[1].keycode,
             self.kc_inputs[2].keycode,
             self.kc_inputs[3].keycode,
-            self.kc_output.keycode
+            self.kc_output.keycode,
+            term
         )
 
     def is_empty(self):
@@ -107,6 +164,17 @@ class ComboEntryUI(QObject):
         if self.kc_output.keycode and self.kc_output.keycode != "KC_NO":
             return False
         return True
+
+    def on_term_changed(self, value):
+        """Handle custom combo term change"""
+        # Keep the enabled bit (bit 15), update timing bits (0-14)
+        enabled = self.custom_combo_term & 0x8000
+        self.custom_combo_term = enabled | (value & 0x7FFF)
+        self.key_changed.emit(self.idx)
+
+    def on_enabled_changed(self):
+        """Handle enabled checkbox change"""
+        self.key_changed.emit(self.idx)
 
     def on_key_changed_at(self, key_idx):
         """Called when a specific key in the combo changes - auto-advance to next"""
@@ -269,7 +337,7 @@ class Combos(BasicEditor):
 
     def valid(self):
         return isinstance(self.device, VialKeyboard) and \
-               (self.device.keyboard and self.device.keyboard.vial_protocol >= VIAL_PROTOCOL_DYNAMIC
+               (self.device.keyboard and self.device.keyboard.viable_protocol
                 and self.device.keyboard.combo_count > 0)
 
     def on_key_changed(self, idx):

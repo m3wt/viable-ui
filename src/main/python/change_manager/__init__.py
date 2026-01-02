@@ -15,6 +15,7 @@ from .changes import (
     QmkBitChange,
     SvalboardSettingChange,
     SvalboardLayerColorChange,
+    CustomValueChange,
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     'QmkBitChange',
     'SvalboardSettingChange',
     'SvalboardLayerColorChange',
+    'CustomValueChange',
 ]

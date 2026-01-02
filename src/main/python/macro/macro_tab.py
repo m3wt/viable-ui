@@ -78,8 +78,7 @@ class MacroTab(QVBoxLayout):
         self.dlg_textbox = None
 
     def add_action(self, act):
-        if self.parent.keyboard.vial_protocol < VIAL_PROTOCOL_EXT_MACROS:
-            act.set_keycode_filter(keycode_filter_masked)
+        # Viable always supports extended keycodes, no filter needed
         line = MacroLine(self, act)
         line.changed.connect(self.on_change)
         self.lines.append(line)

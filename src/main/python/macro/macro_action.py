@@ -40,7 +40,7 @@ class ActionText(BasicAction):
         super().__init__()
         self.text = text
 
-    def serialize(self, vial_protocol):
+    def serialize(self, viable_protocol):
         return self.text.encode("utf-8")
 
     def save(self):
@@ -70,11 +70,11 @@ class ActionSequence(BasicAction):
     def serialize_prefix(self, kc):
         raise NotImplementedError
 
-    def serialize(self, vial_protocol):
+    def serialize(self, viable_protocol):
         out = b""
         for kc in self.sequence:
-            if vial_protocol >= VIAL_PROTOCOL_ADVANCED_MACROS:
-                out += struct.pack("B", SS_QMK_PREFIX)
+            # Viable always uses v2 format with SS_QMK_PREFIX
+            out += struct.pack("B", SS_QMK_PREFIX)
             kc = Keycode.deserialize(kc)
             out += self.serialize_prefix(kc)
             if kc < 256:
@@ -142,9 +142,8 @@ class ActionDelay(BasicAction):
         super().__init__()
         self.delay = delay
 
-    def serialize(self, vial_protocol):
-        if vial_protocol < VIAL_PROTOCOL_ADVANCED_MACROS:
-            raise RuntimeError("ActionDelay can only be used with vial_protocol>=2")
+    def serialize(self, viable_protocol):
+        # Viable always supports delays
         delay = self.delay
         return struct.pack("BBBB", SS_QMK_PREFIX, SS_DELAY_CODE, (delay % 255) + 1, (delay // 255) + 1)
 

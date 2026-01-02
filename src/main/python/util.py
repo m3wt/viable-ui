@@ -16,11 +16,11 @@ from keymaps import KEYMAPS
 
 tr = QCoreApplication.translate
 
-# For Vial keyboard
-VIAL_SERIAL_NUMBER_MAGIC = "vial:f64c2b3c"
+# For Viable keyboard (web detection - sideload bypasses this)
+VIABLE_SERIAL_NUMBER_MAGIC = "viable:"
 
-# For bootloader
-VIBL_SERIAL_NUMBER_MAGIC = "vibl:d4f8159c"
+# VIA protocol version 12 = VIA3 (supports custom menus)
+VIA3_MIN_PROTOCOL = 12
 
 MSG_LEN = 32
 
@@ -44,31 +44,45 @@ def hid_send(dev, msg, retries=1):
 
     data = b""
     first = True
+    attempt = 0
 
     while retries > 0:
+        attempt += 1
         retries -= 1
         if not first:
             time.sleep(0.5)
         first = False
         try:
             # add 00 at start for hidapi report id
-            if dev.write(b"\x00" + msg) != MSG_LEN + 1:
+            logging.debug("hid_send attempt %d: writing %s", attempt, msg[:8].hex())
+            written = dev.write(b"\x00" + msg)
+            if written != MSG_LEN + 1:
+                err = dev.error() if hasattr(dev, 'error') else 'N/A'
+                logging.warning("hid_send: write returned %d, expected %d, error=%s", written, MSG_LEN + 1, err)
                 continue
 
+            logging.debug("hid_send: waiting for response...")
             data = bytes(dev.read(MSG_LEN, timeout_ms=500))
             if not data:
+                logging.warning("hid_send: read returned empty data")
                 continue
-        except OSError:
+            logging.debug("hid_send: received %s", data[:8].hex())
+        except OSError as e:
+            logging.warning("hid_send: OSError: %s", e)
             continue
         break
 
     if not data:
+        logging.error("hid_send: failed to communicate after %d attempts", attempt)
         raise RuntimeError("failed to communicate with the device")
     return data
 
 
 def is_rawhid(desc, quiet):
-    if desc["usage_page"] != 0xFF60 or desc["usage"] != 0x61:
+    # Accept both Viable (0xFF61/0x62) and VIA (0xFF60/0x61) boards
+    is_viable = desc["usage_page"] == 0xFF61 and desc["usage"] == 0x62
+    is_via = desc["usage_page"] == 0xFF60 and desc["usage"] == 0x61
+    if not (is_viable or is_via):
         if not quiet:
             logging.warning("is_rawhid: {} does not match - usage_page={:04X} usage={:02X}".format(
                 desc["path"], desc["usage_page"], desc["usage"]))
@@ -93,11 +107,53 @@ def is_rawhid(desc, quiet):
     return True
 
 
+def is_via3_device(desc, quiet=False):
+    """Check if a device supports VIA protocol version 3 (protocol >= 12)"""
+    import struct
+
+    # Only check devices with VIA's usage page/id
+    if desc["usage_page"] != 0xFF60 or desc["usage"] != 0x61:
+        return False
+
+    dev = hid.device()
+    try:
+        dev.open_path(desc["path"])
+    except OSError:
+        return False
+
+    try:
+        # Send CMD_VIA_GET_PROTOCOL_VERSION (0x01)
+        msg = struct.pack("B", 0x01) + b"\x00" * (MSG_LEN - 1)
+        dev.write(msg)
+
+        data = bytes(dev.read(MSG_LEN, timeout_ms=500))
+        if len(data) < 3:
+            return False
+
+        # Response: [0x01] [version_hi] [version_lo]
+        protocol_version = struct.unpack(">H", bytes(data[1:3]))[0]
+
+        if not quiet:
+            logging.info("VIA protocol probe: {} = version {}".format(desc["path"], protocol_version))
+
+        return protocol_version >= VIA3_MIN_PROTOCOL
+    except Exception as e:
+        if not quiet:
+            logging.warning("VIA protocol probe failed for {}: {}".format(desc["path"], e))
+        return False
+    finally:
+        dev.close()
+
+
 def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quiet=False):
-    from vial_device import VialBootloader, VialKeyboard, VialDummyKeyboard
+    from vial_device import VialKeyboard, VialDummyKeyboard
 
     filtered = []
+    seen_paths = set()  # Avoid duplicates
     for dev in hid.enumerate():
+        if dev["path"] in seen_paths:
+            continue
+
         if dev["vendor_id"] == sideload_vid and dev["product_id"] == sideload_pid:
             if not quiet:
                 logging.info("Trying VID={:04X}, PID={:04X}, serial={}, path={} - sideload".format(
@@ -105,26 +161,23 @@ def find_vial_devices(via_stack_json, sideload_vid=None, sideload_pid=None, quie
                 ))
             if is_rawhid(dev, quiet):
                 filtered.append(VialKeyboard(dev, sideload=True))
-        elif VIAL_SERIAL_NUMBER_MAGIC in dev["serial_number"]:
+                seen_paths.add(dev["path"])
+        elif VIABLE_SERIAL_NUMBER_MAGIC in dev["serial_number"]:
             if not quiet:
-                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - vial serial magic".format(
+                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - viable serial magic".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
                 ))
             if is_rawhid(dev, quiet):
                 filtered.append(VialKeyboard(dev))
-        elif VIBL_SERIAL_NUMBER_MAGIC in dev["serial_number"]:
+                seen_paths.add(dev["path"])
+        elif is_via3_device(dev, quiet):
+            # VIA3 board without Viable firmware - will need sideload JSON
             if not quiet:
-                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - vibl serial magic".format(
+                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - VIA3 board".format(
                     dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
                 ))
-            filtered.append(VialBootloader(dev))
-        elif str(dev["vendor_id"] * 65536 + dev["product_id"]) in via_stack_json["definitions"]:
-            if not quiet:
-                logging.info("Matching VID={:04X}, PID={:04X}, serial={}, path={} - VIA stack".format(
-                    dev["vendor_id"], dev["product_id"], dev["serial_number"], dev["path"]
-                ))
-            if is_rawhid(dev, quiet):
-                filtered.append(VialKeyboard(dev, via_stack=True))
+            filtered.append(VialKeyboard(dev, sideload=True))
+            seen_paths.add(dev["path"])
 
     if sideload_vid == sideload_pid == 0:
         filtered.append(VialDummyKeyboard())

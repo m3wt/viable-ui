@@ -3,8 +3,7 @@ import struct
 
 from keycodes.keycodes import Keycode, RESET_KEYCODE
 from protocol.base_protocol import BaseProtocol
-from protocol.constants import DYNAMIC_VIAL_ALT_REPEAT_KEY_GET, CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP, \
-    DYNAMIC_VIAL_ALT_REPEAT_KEY_SET
+from protocol.constants import VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_GET, VIABLE_ALT_REPEAT_KEY_SET
 from unlocker import Unlocker
 
 
@@ -36,7 +35,7 @@ class AltRepeatKeyEntry:
         self.options = AltRepeatKeyOptions(opt)
 
     def serialize(self):
-        """ Serializes into a vial_alt_repeat_key_entry_t object """
+        """ Serializes into a viable_alt_repeat_key_entry_t object """
         return struct.pack("<HHBB", Keycode.deserialize(self.keycode), Keycode.deserialize(self.alt_keycode),
                            self.allowed_mods, self.options.serialize())
 
@@ -70,7 +69,7 @@ class AltRepeatKeyEntry:
 class ProtocolAltRepeatKey(BaseProtocol):
 
     def reload_alt_repeat_key(self):
-        entries = self._retrieve_dynamic_entries(DYNAMIC_VIAL_ALT_REPEAT_KEY_GET,
+        entries = self._retrieve_dynamic_entries(VIABLE_ALT_REPEAT_KEY_GET,
                                                  self.alt_repeat_key_count, "<HHBB")
         self.alt_repeat_key_entries = []
         for e in entries:
@@ -86,16 +85,16 @@ class ProtocolAltRepeatKey(BaseProtocol):
                 Unlocker.unlock(self)
 
             self.alt_repeat_key_entries[idx] = entry
-            self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
-                                                DYNAMIC_VIAL_ALT_REPEAT_KEY_SET, idx) + entry.serialize())
+            self.usb_send(self.dev, struct.pack("BBB", VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_SET, idx)
+                          + entry.serialize())
 
     def _commit_alt_repeat_key(self, idx, entry):
         """Send an alt repeat key change to the device (used by ChangeManager)."""
         if entry.keycode == RESET_KEYCODE or entry.alt_keycode == RESET_KEYCODE:
             Unlocker.unlock(self)
         self.alt_repeat_key_entries[idx] = entry
-        self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_DYNAMIC_ENTRY_OP,
-                                            DYNAMIC_VIAL_ALT_REPEAT_KEY_SET, idx) + entry.serialize())
+        self.usb_send(self.dev, struct.pack("BBB", VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_SET, idx)
+                      + entry.serialize())
         return True
 
     def save_alt_repeat_key(self):

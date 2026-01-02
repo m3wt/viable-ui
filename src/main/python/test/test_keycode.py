@@ -12,13 +12,12 @@ class FakeKeyboard:
     midi = None
 
     def __init__(self, protocol):
-        self.vial_protocol = protocol
-        if protocol >= 6:
-            self.supported_features = set([
-                "persistent_default_layer", "caps_word", "layer_lock", "repeat_key",
-            ])
-        else:
-            self.supported_features = set()
+        self.viable_protocol = protocol
+        # VIA protocol 12 uses v6 keycodes, earlier versions use v5
+        self.via_protocol = 12 if protocol >= 1 else 9
+        self.supported_features = set([
+            "persistent_default_layer", "caps_word", "layer_lock", "repeat_key",
+        ])
 
 
 class TestKeycode(unittest.TestCase):
@@ -34,10 +33,7 @@ class TestKeycode(unittest.TestCase):
             self.assertEqual(d, x, "{} serialized into {} deserialized into {}".format(x, s, d))
             if s != hex(x):
                 covered += 1
-        print("[protocol={}] {}/{} covered keycodes, which is {:.4f}%".format(protocol, covered, 2 ** 16, 100 * covered / 2 ** 16))
+        print("[viable_protocol={}] {}/{} covered keycodes, which is {:.4f}%".format(protocol, covered, 2 ** 16, 100 * covered / 2 ** 16))
 
-    def test_serialize_v5(self):
-        self._test_serialize_protocol(5)
-
-    def test_serialize_v6(self):
-        self._test_serialize_protocol(6)
+    def test_serialize(self):
+        self._test_serialize_protocol(1)

@@ -14,10 +14,16 @@ from main_window import MainWindow
 
 from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID, \
     CMD_VIAL_GET_SIZE, CMD_VIAL_GET_DEFINITION, CMD_VIA_GET_LAYER_COUNT, CMD_VIA_MACRO_GET_COUNT, \
-    CMD_VIA_MACRO_GET_BUFFER_SIZE, CMD_VIAL_QMK_SETTINGS_QUERY, CMD_VIAL_DYNAMIC_ENTRY_OP, \
-    DYNAMIC_VIAL_GET_NUMBER_OF_ENTRIES, CMD_VIA_KEYMAP_GET_BUFFER, CMD_VIA_MACRO_GET_BUFFER, CMD_VIAL_GET_UNLOCK_STATUS, \
-    CMD_VIA_SET_KEYCODE, DYNAMIC_VIAL_COMBO_GET, DYNAMIC_VIAL_COMBO_SET, DYNAMIC_VIAL_TAP_DANCE_GET, \
-    DYNAMIC_VIAL_TAP_DANCE_SET
+    CMD_VIA_MACRO_GET_BUFFER_SIZE, \
+    CMD_VIA_KEYMAP_GET_BUFFER, CMD_VIA_MACRO_GET_BUFFER, CMD_VIAL_GET_UNLOCK_STATUS, \
+    CMD_VIA_SET_KEYCODE, VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO, \
+    VIABLE_COMBO_GET, VIABLE_COMBO_SET, VIABLE_TAP_DANCE_GET, VIABLE_TAP_DANCE_SET, \
+    VIABLE_KEY_OVERRIDE_GET, VIABLE_KEY_OVERRIDE_SET, \
+    VIABLE_ALT_REPEAT_KEY_GET, VIABLE_ALT_REPEAT_KEY_SET, \
+    VIABLE_ONESHOT_GET, VIABLE_ONESHOT_SET, \
+    VIABLE_DEFINITION_SIZE, VIABLE_DEFINITION_CHUNK, BUFFER_FETCH_CHUNK, \
+    VIABLE_QMK_SETTINGS_QUERY, \
+    CMD_VIA_CUSTOM_SET_VALUE, CMD_VIA_CUSTOM_GET_VALUE, CMD_VIA_CUSTOM_SAVE
 from widgets.square_button import SquareButton
 
 FAKE_KEYBOARD = """
@@ -41,27 +47,81 @@ FAKE_KEYBOARD = """
 }
 """
 
+FAKE_KEYBOARD_WITH_MENUS = """
+{
+  "matrix": {
+    "rows": 2,
+    "cols": 2
+  },
+  "menus": [
+    {
+      "label": "Test Settings",
+      "content": [
+        {
+          "label": "General",
+          "content": [
+            {
+              "label": "Test Toggle",
+              "type": "toggle",
+              "content": ["id_test_toggle", 0, 0]
+            },
+            {
+              "label": "Test Range",
+              "type": "range",
+              "options": [0, 255],
+              "content": ["id_test_range", 0, 1]
+            },
+            {
+              "label": "Test Dropdown",
+              "type": "dropdown",
+              "options": ["Off", "Low", "Medium", "High"],
+              "content": ["id_test_dropdown", 0, 2]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "layouts": {
+    "keymap": [
+      [
+        "0,0",
+        "0,1"
+      ],
+      [
+        "1,0",
+        "1,1"
+      ]
+    ]
+  }
+}
+"""
+
 
 def mock_enumerate():
     return [{
         "vendor_id": 0xDEAD,
         "product_id": 0xBEEF,
-        "serial_number": "vial:f64c2b3c",
-        "usage_page": 0xFF60,
-        "usage": 0x61,
+        "serial_number": "viable:12345-00",
+        "usage_page": 0xFF61,
+        "usage": 0x62,
         "path": "/magic/path/for/tests",
-        "manufacturer_string": "Vial Testing Ltd",
+        "manufacturer_string": "Viable Testing Ltd",
         "product_string": "Test Keyboard",
     }]
 
 
 class VirtualKeyboard:
 
-    def __init__(self, kbjson, combos=None, tap_dance=None):
+    def __init__(self, kbjson, combos=None, tap_dance=None, key_overrides=None, alt_repeat_keys=None):
         if combos is None:
             combos = []
         if tap_dance is None:
             tap_dance = []
+        if key_overrides is None:
+            key_overrides = []
+        if alt_repeat_keys is None:
+            alt_repeat_keys = []
 
         self.keyboard_definition = lzma.compress(kbjson.encode("utf-8"))
 
@@ -79,9 +139,15 @@ class VirtualKeyboard:
 
         self.combos = combos
         self.tap_dance = tap_dance
+        self.key_overrides = key_overrides
+        self.alt_repeat_keys = alt_repeat_keys
 
-        self.key_override_entries = 0
-        self.alt_repeat_key_entries = 0
+        # Oneshot settings
+        self.oneshot_timeout = 500
+        self.oneshot_tap_toggle = 5
+
+        # Custom values storage: (channel, value_id) -> bytes
+        self.custom_values = {}
 
     def get_keymap_buffer(self):
         output = b""
@@ -91,36 +157,98 @@ class VirtualKeyboard:
                     output += struct.pack(">H", self.keymap[layer][row][col])
         return output
 
-    def vial_cmd_dynamic(self, msg):
-        if msg[2] == DYNAMIC_VIAL_GET_NUMBER_OF_ENTRIES:
-            response = struct.pack("BBBB", len(self.tap_dance), len(self.combos),
-                                   self.key_override_entries, self.alt_repeat_key_entries)
-            # Zero pad to 31 bytes.
-            response += (31 - len(response)) * b'\0'
-            # Set last two bits, indicating Caps Word and Layer Lock.
-            response += (0b00000011).to_bytes(1, "little")
-            return response
-        elif msg[2] == DYNAMIC_VIAL_COMBO_GET:
-            idx = msg[3]
-            assert idx < len(self.combos)
-            return struct.pack("<BHHHHH", 0, *self.combos[idx])
-        elif msg[2] == DYNAMIC_VIAL_COMBO_SET:
-            idx = msg[3]
-            keys = struct.unpack_from("<HHHHH", msg[4:])
-            assert idx < len(self.combos)
-            self.combos[idx] = keys
-            return b""
-        elif msg[2] == DYNAMIC_VIAL_TAP_DANCE_GET:
-            idx = msg[3]
+    def viable_cmd(self, msg):
+        """Handle Viable 0xDF protocol commands."""
+        if msg[1] == VIABLE_GET_PROTOCOL_INFO:
+            # Response: [0xDF] [0x00] [ver0-3] [td_count] [combo_count] [ko_count] [ark_count] [flags]
+            # Version is 4 bytes little-endian at offset 2
+            features = 0b00000011  # Caps Word and Layer Lock
+            return struct.pack("<BBIBBBBB", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO,
+                               1,  # version (4 bytes little-endian)
+                               len(self.tap_dance), len(self.combos),
+                               len(self.key_overrides), len(self.alt_repeat_keys), features)
+        elif msg[1] == VIABLE_TAP_DANCE_GET:
+            idx = msg[2]
             assert idx < len(self.tap_dance)
-            return struct.pack("<BHHHHH", 0, *self.tap_dance[idx])
-        elif msg[2] == DYNAMIC_VIAL_TAP_DANCE_SET:
-            idx = msg[3]
-            values = struct.unpack_from("<HHHHH", msg[4:])
+            # Response: [0xDF] [0x01] [index] [10 bytes of tap_dance_entry]
+            return struct.pack("<BBB", VIABLE_PREFIX, VIABLE_TAP_DANCE_GET, idx) + \
+                   struct.pack("<HHHHH", *self.tap_dance[idx])
+        elif msg[1] == VIABLE_TAP_DANCE_SET:
+            idx = msg[2]
+            values = struct.unpack_from("<HHHHH", msg[3:])
             assert idx < len(self.tap_dance)
             self.tap_dance[idx] = values
-            return b""
-        raise RuntimeError("unsupported dynamic submsg 0x{:02X}".format(msg[2]))
+            # Response: [0xDF] [0x02] [index]
+            return struct.pack("BBB", VIABLE_PREFIX, VIABLE_TAP_DANCE_SET, idx)
+        elif msg[1] == VIABLE_COMBO_GET:
+            idx = msg[2]
+            assert idx < len(self.combos)
+            # Response: [0xDF] [0x03] [index] [12 bytes of combo_entry]
+            combo = self.combos[idx]
+            if len(combo) == 5:
+                combo = combo + (0,)
+            return struct.pack("<BBB", VIABLE_PREFIX, VIABLE_COMBO_GET, idx) + \
+                   struct.pack("<HHHHHH", *combo)
+        elif msg[1] == VIABLE_COMBO_SET:
+            idx = msg[2]
+            keys = struct.unpack_from("<HHHHHH", msg[3:])
+            assert idx < len(self.combos)
+            self.combos[idx] = keys
+            # Response: [0xDF] [0x04] [index]
+            return struct.pack("BBB", VIABLE_PREFIX, VIABLE_COMBO_SET, idx)
+        elif msg[1] == VIABLE_KEY_OVERRIDE_GET:
+            idx = msg[2]
+            assert idx < len(self.key_overrides)
+            # Response: [0xDF] [0x05] [index] [12 bytes of key_override_entry]
+            # key_override: [trigger, replacement, layers, trigger_mods, negative_mod_mask, suppressed_mods, options]
+            ko = self.key_overrides[idx]
+            return struct.pack("<BBB", VIABLE_PREFIX, VIABLE_KEY_OVERRIDE_GET, idx) + \
+                   struct.pack("<HHIBBBB", *ko)
+        elif msg[1] == VIABLE_KEY_OVERRIDE_SET:
+            idx = msg[2]
+            values = struct.unpack_from("<HHIBBBB", msg[3:])
+            assert idx < len(self.key_overrides)
+            self.key_overrides[idx] = values
+            # Response: [0xDF] [0x06] [index]
+            return struct.pack("BBB", VIABLE_PREFIX, VIABLE_KEY_OVERRIDE_SET, idx)
+        elif msg[1] == VIABLE_ALT_REPEAT_KEY_GET:
+            idx = msg[2]
+            assert idx < len(self.alt_repeat_keys)
+            # Response: [0xDF] [0x07] [index] [6 bytes of alt_repeat_key_entry]
+            # alt_repeat_key: [keycode, alt_keycode, allowed_mods, options]
+            ark = self.alt_repeat_keys[idx]
+            return struct.pack("<BBB", VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_GET, idx) + \
+                   struct.pack("<HHBB", *ark)
+        elif msg[1] == VIABLE_ALT_REPEAT_KEY_SET:
+            idx = msg[2]
+            values = struct.unpack_from("<HHBB", msg[3:])
+            assert idx < len(self.alt_repeat_keys)
+            self.alt_repeat_keys[idx] = values
+            # Response: [0xDF] [0x08] [index]
+            return struct.pack("BBB", VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_SET, idx)
+        elif msg[1] == VIABLE_ONESHOT_GET:
+            # Response: [0xDF] [0x09] [timeout_lo] [timeout_hi] [tap_toggle]
+            return struct.pack("<BBHB", VIABLE_PREFIX, VIABLE_ONESHOT_GET,
+                               self.oneshot_timeout, self.oneshot_tap_toggle)
+        elif msg[1] == VIABLE_ONESHOT_SET:
+            self.oneshot_timeout = struct.unpack_from("<H", msg[2:])[0]
+            self.oneshot_tap_toggle = msg[4]
+            # Response: [0xDF] [0x0A]
+            return struct.pack("BB", VIABLE_PREFIX, VIABLE_ONESHOT_SET)
+        elif msg[1] == VIABLE_DEFINITION_SIZE:
+            # Response: [0xDF] [0x0D] [size 4 bytes little-endian]
+            return struct.pack("<BBI", VIABLE_PREFIX, VIABLE_DEFINITION_SIZE,
+                               len(self.keyboard_definition))
+        elif msg[1] == VIABLE_DEFINITION_CHUNK:
+            # Request: [0xDF] [0x0E] [offset 2 bytes little-endian]
+            offset = struct.unpack_from("<H", msg[2:])[0]
+            chunk = self.keyboard_definition[offset:offset + BUFFER_FETCH_CHUNK]
+            # Response: [0xDF] [0x0E] [offset 2 bytes] [chunk data]
+            return struct.pack("<BBH", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset) + chunk
+        elif msg[1] == VIABLE_QMK_SETTINGS_QUERY:
+            # Return 0xFFFF to indicate no QMK settings supported
+            return struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_QUERY, 0xFFFF)
+        raise RuntimeError("unsupported viable submsg 0x{:02X}".format(msg[1]))
 
     def vial_cmd(self, msg):
         if msg[1] == CMD_VIAL_GET_KEYBOARD_ID:
@@ -132,17 +260,15 @@ class VirtualKeyboard:
             return self.keyboard_definition[page*32:(page+1)*32]
         elif msg[1] == CMD_VIAL_GET_UNLOCK_STATUS:
             return struct.pack("<BB", 0, 0)  # TODO we want to test unlocking as well
-        elif msg[1] == CMD_VIAL_QMK_SETTINGS_QUERY:
-            return b"\xFF" * 32
-        elif msg[1] == CMD_VIAL_DYNAMIC_ENTRY_OP:
-            return self.vial_cmd_dynamic(msg)
         raise RuntimeError("unknown command for Vial protocol 0x{:02X}".format(msg[1]))
 
     def process(self, msg):
-        if msg[0] == CMD_VIA_VIAL_PREFIX:
+        if msg[0] == VIABLE_PREFIX:
+            return self.viable_cmd(msg)
+        elif msg[0] == CMD_VIA_VIAL_PREFIX:
             return self.vial_cmd(msg)
         elif msg[0] == CMD_VIA_GET_PROTOCOL_VERSION:
-            return struct.pack(">BH", msg[0], 9)
+            return struct.pack(">BH", msg[0], 12)
         elif msg[0] == CMD_VIA_SET_KEYCODE:
             layer, row, col, kc = struct.unpack_from(">BBBH", msg[1:])
             self.keymap[layer][row][col] = kc
@@ -159,6 +285,17 @@ class VirtualKeyboard:
         elif msg[0] == CMD_VIA_KEYMAP_GET_BUFFER:
             offset, size = struct.unpack_from(">HB", msg[1:])
             return msg[0:1] + self.get_keymap_buffer()[offset:offset+size]
+        elif msg[0] == CMD_VIA_CUSTOM_GET_VALUE:
+            channel, value_id = msg[1], msg[2]
+            value = self.custom_values.get((channel, value_id), b'\x00\x00')
+            return struct.pack("BBB", msg[0], channel, value_id) + value
+        elif msg[0] == CMD_VIA_CUSTOM_SET_VALUE:
+            channel, value_id = msg[1], msg[2]
+            self.custom_values[(channel, value_id)] = bytes(msg[3:])
+            return struct.pack("BBB", msg[0], channel, value_id)
+        elif msg[0] == CMD_VIA_CUSTOM_SAVE:
+            # Just acknowledge the save
+            return struct.pack("BB", msg[0], msg[1])
         raise RuntimeError("unknown command for VIA protocol 0x{:02X}".format(msg[0]))
 
 
@@ -248,7 +385,7 @@ def prepare(qtbot, keyboard_json, combos=None, tap_dance=None):
 
 def test_gui_startup(qtbot):
     mw, vk = prepare(qtbot, FAKE_KEYBOARD)
-    assert mw.combobox_devices.currentText() == "Vial Testing Ltd Test Keyboard"
+    assert mw.combobox_devices.currentText() == "Viable Testing Ltd Test Keyboard"
     assert mw.combobox_devices.count() == 1
 
 
@@ -256,16 +393,15 @@ def test_about_keyboard(qtbot):
     mw, vk = prepare(qtbot, FAKE_KEYBOARD)
 
     mw.about_menu.actions()[0].trigger()
-    assert mw.about_dialog.windowTitle() == "About Vial Testing Ltd Test Keyboard"
-    assert mw.about_dialog.textarea.toPlainText() == ('Manufacturer: Vial Testing Ltd\n'
+    assert mw.about_dialog.windowTitle() == "About Viable Testing Ltd Test Keyboard"
+    assert mw.about_dialog.textarea.toPlainText() == ('Manufacturer: Viable Testing Ltd\n'
          'Product: Test Keyboard\n'
          'VID: DEAD\n'
          'PID: BEEF\n'
          'Device: /magic/path/for/tests\n'
          '\n'
-         'VIA protocol: 9\n'
-         'Vial protocol: 6\n'
-         'Vial keyboard ID: F00DFACEDEADBEEF\n'
+         'VIA protocol: 12\n'
+         'Viable protocol: 1\n'
          '\n'
          'Macro entries: 8\n'
          'Macro memory: 512 bytes\n'
@@ -454,7 +590,8 @@ def test_layer_switch(qtbot):
 
 def test_combos(qtbot):
     """ Tests combo loading and display """
-    mw, vk = prepare(qtbot, FAKE_KEYBOARD, combos=[[0, 0, 0, 0, 0], [4, 5, 6, 7, 8], [0, 0x106, 0, 0, 0]])
+    # Include 6th element (custom_combo_term) for new 12-byte format
+    mw, vk = prepare(qtbot, FAKE_KEYBOARD, combos=[[0, 0, 0, 0, 0, 0], [4, 5, 6, 7, 8, 0], [0, 0x106, 0, 0, 0, 0]])
 
     combos = None
     for x in range(mw.tabs.count()):
@@ -490,7 +627,7 @@ def test_combos(qtbot):
 
     # Set to "A"
     qtbot.mouseClick(find_key_btn(mw.tray_keycodes, "A"), qt_api.QtCore.Qt.MouseButton.LeftButton)
-    assert vk.combos[2] == (4, 0x106, 0, 0, 0)
+    assert vk.combos[2] == (4, 0x106, 0, 0, 0, 0)
 
     # Test modifier + key using ModsBar
     ak = mw.tray_keycodes.all_keycodes
@@ -503,7 +640,7 @@ def test_combos(qtbot):
     shift_btn = ak.mods_bar.mod_buttons['shift']
     qtbot.mouseClick(shift_btn, qt_api.QtCore.Qt.MouseButton.LeftButton)
     qtbot.mouseClick(find_key_btn(mw.tray_keycodes, "D"), qt_api.QtCore.Qt.MouseButton.LeftButton)
-    assert vk.combos[2] == (4, 0x106, 0x207, 0, 0)  # Third key is now LSFT(KC_D)
+    assert vk.combos[2] == (4, 0x106, 0x207, 0, 0, 0)  # Third key is now LSFT(KC_D)
 
     # Disable shift
     qtbot.mouseClick(shift_btn, qt_api.QtCore.Qt.MouseButton.LeftButton)
@@ -549,3 +686,35 @@ def test_tap_dance(qtbot):
     # Set to "A"
     qtbot.mouseClick(find_key_btn(mw.tray_keycodes, "A"), qt_api.QtCore.Qt.MouseButton.LeftButton)
     assert vk.tap_dance[2] == (4, 0x106, 0, 0, 500)
+
+
+def test_custom_ui_tab_hidden_without_menus(qtbot):
+    """Test that Keyboard Settings tab is hidden when keyboard has no menus."""
+    mw, vk = prepare(qtbot, FAKE_KEYBOARD)
+
+    # Check that "Keyboard Settings" tab is NOT present
+    tab_names = [mw.tabs.tabText(i) for i in range(mw.tabs.count())]
+    assert "Keyboard Settings" not in tab_names, \
+        f"Keyboard Settings tab should be hidden when no menus defined, but found tabs: {tab_names}"
+
+
+def test_custom_ui_tab_visible_with_menus(qtbot):
+    """Test that Keyboard Settings tab is visible when keyboard has menus."""
+    mw, vk = prepare(qtbot, FAKE_KEYBOARD_WITH_MENUS)
+
+    # Check that "Keyboard Settings" tab IS present
+    tab_names = [mw.tabs.tabText(i) for i in range(mw.tabs.count())]
+    assert "Keyboard Settings" in tab_names, \
+        f"Keyboard Settings tab should be visible when menus defined, but found tabs: {tab_names}"
+
+    # Find and verify the tab content
+    custom_ui_editor = None
+    for x in range(mw.tabs.count()):
+        if mw.tabs.tabText(x) == "Keyboard Settings":
+            custom_ui_editor = mw.tabs.widget(x).editor
+            break
+
+    assert custom_ui_editor is not None, "Could not find Keyboard Settings tab"
+    # The renderer should have values registered from the menus
+    assert len(custom_ui_editor.renderer.values) > 0, "CustomUI renderer should have values registered"
+

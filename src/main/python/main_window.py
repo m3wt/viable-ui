@@ -19,6 +19,7 @@ from editor.alt_repeat_key import AltRepeatKey
 from editor.combos import Combos
 from constants import WINDOW_WIDTH, WINDOW_HEIGHT
 from widgets.editor_container import EditorContainer
+from editor.custom_ui_editor import CustomUIEditor
 from editor.firmware_flasher import FirmwareFlasher
 from editor.key_override import KeyOverride
 from protocol.keyboard_comm import ProtocolError
@@ -28,7 +29,6 @@ from editor.layout_editor import LayoutEditor
 from editor.macro_recorder import MacroRecorder
 from editor.qmk_settings import QmkSettings
 from editor.rgb_configurator import RGBConfigurator
-from editor.svalboard_editor import SvalboardEditor
 from tabbed_keycodes import TabbedKeycodes
 from editor.tap_dance import TapDance
 from unlocker import Unlocker
@@ -91,16 +91,17 @@ class MainWindow(QMainWindow):
         self.combos = Combos()
         self.key_override = KeyOverride()
         self.alt_repeat_key = AltRepeatKey()
+        self.custom_ui_editor = CustomUIEditor()
         QmkSettings.initialize(appctx)
         self.qmk_settings = QmkSettings()
         self.matrix_tester = MatrixTest(self.layout_editor)
         self.rgb_configurator = RGBConfigurator()
-        self.svalboard_editor = SvalboardEditor()
 
         self.editors = [(self.keymap_editor, "Keymap"), (self.layout_editor, "Layout"), (self.macro_recorder, "Macros"),
                         (self.rgb_configurator, "Lighting"), (self.tap_dance, "Tap Dance"), (self.combos, "Combos"),
                         (self.key_override, "Key Overrides"), (self.alt_repeat_key, "Alt Repeat Key"),
-                        (self.qmk_settings, "QMK Settings"), (self.svalboard_editor, "Svalboard"),
+                        (self.custom_ui_editor, "Keyboard Settings"),
+                        (self.qmk_settings, "QMK Settings"),
                         (self.matrix_tester, "Matrix tester"), (self.firmware_flasher, "Firmware updater")]
 
         Unlocker.global_layout_editor = self.layout_editor
@@ -204,23 +205,9 @@ class MainWindow(QMainWindow):
         exit_act.setShortcut("Ctrl+Q")
         exit_act.triggered.connect(self.close)
 
-        # Svalboard profile save/load (only visible when Svalboard connected)
-        self.svalboard_load_act = QAction(tr("MenuFile", "Load Svalboard profile..."), self)
-        self.svalboard_load_act.setShortcut("Ctrl+Shift+O")
-        self.svalboard_load_act.triggered.connect(self.on_svalboard_load)
-        self.svalboard_load_act.setVisible(False)
-
-        self.svalboard_save_act = QAction(tr("MenuFile", "Save Svalboard profile..."), self)
-        self.svalboard_save_act.setShortcut("Ctrl+Shift+S")
-        self.svalboard_save_act.triggered.connect(self.on_svalboard_save)
-        self.svalboard_save_act.setVisible(False)
-
         file_menu = self.menuBar().addMenu(tr("Menu", "File"))
         file_menu.addAction(layout_load_act)
         file_menu.addAction(layout_save_act)
-        file_menu.addSeparator()
-        file_menu.addAction(self.svalboard_load_act)
-        file_menu.addAction(self.svalboard_save_act)
 
         if sys.platform != "emscripten":
             file_menu.addSeparator()
@@ -247,6 +234,10 @@ class MainWindow(QMainWindow):
         keyboard_reset_act.setShortcut("Ctrl+B")
         keyboard_reset_act.triggered.connect(self.reboot_to_bootloader)
 
+        self.reset_dynamic_act = QAction(tr("MenuSecurity", "Reset All Dynamic Features..."), self)
+        self.reset_dynamic_act.triggered.connect(self.reset_dynamic_features)
+        self.reset_dynamic_act.setVisible(False)  # Only visible when Viable keyboard connected
+
         keyboard_layout_menu = self.menuBar().addMenu(tr("Menu", "Keyboard layout"))
         keymap_group = QActionGroup(self)
         selected_keymap = self.settings.value("keymap")
@@ -268,6 +259,8 @@ class MainWindow(QMainWindow):
         self.security_menu.addAction(keyboard_lock_act)
         self.security_menu.addSeparator()
         self.security_menu.addAction(keyboard_reset_act)
+        self.security_menu.addSeparator()
+        self.security_menu.addAction(self.reset_dynamic_act)
 
         self.theme_menu = self.menuBar().addMenu(tr("Menu", "Theme"))
         theme_group = QActionGroup(self)
@@ -297,21 +290,9 @@ class MainWindow(QMainWindow):
         """
         Receives a message from the JS bridge when a layout has
         been loaded via the JS File System API.
-        Handles both .vil and .svil formats.
         """
-        # Try to detect if this is a .svil profile or a .vil layout
-        try:
-            data = json.loads(layout.decode("utf-8"))
-            if data.get("format") == "svil":
-                # This is a Svalboard profile
-                self._restore_svalboard_profile(layout)
-                return
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            pass
-
         # Clear pending changes before loading - file load overwrites everything
         ChangeManager.instance().clear()
-        # Standard .vil layout
         self.keymap_editor.restore_layout(layout)
         self.rebuild()
 
@@ -323,9 +304,9 @@ class MainWindow(QMainWindow):
             vialglue.load_layout()
         else:
             dialog = QFileDialog()
-            dialog.setDefaultSuffix("vil")
+            dialog.setDefaultSuffix("vbl")
             dialog.setAcceptMode(QFileDialog.AcceptOpen)
-            dialog.setNameFilters(["Vial layout (*.vil)"])
+            dialog.setNameFilters(["Viable layout (*.vbl)", "Vial layout (*.vil)", "All files (*)"])
             if dialog.exec() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "rb") as inf:
                     data = inf.read()
@@ -343,101 +324,12 @@ class MainWindow(QMainWindow):
             vialglue.save_layout(layout)
         else:
             dialog = QFileDialog()
-            dialog.setDefaultSuffix("vil")
+            dialog.setDefaultSuffix("vbl")
             dialog.setAcceptMode(QFileDialog.AcceptSave)
-            dialog.setNameFilters(["Vial layout (*.vil)"])
+            dialog.setNameFilters(["Viable layout (*.vbl)"])
             if dialog.exec() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "wb") as outf:
                     outf.write(self.keymap_editor.save_layout())
-
-    def on_svalboard_save(self):
-        """Save Svalboard profile (.svil) with layout and Svalboard settings"""
-        if not self.svalboard_editor.valid():
-            return
-
-        # Build the combined profile data
-        svalboard_state = self.svalboard_editor.save_state()
-        vil_data = json.loads(self.keymap_editor.save_layout().decode("utf-8"))
-
-        profile = {
-            "version": 1,
-            "format": "svil",
-            "protocol_version": self.keymap_editor.keyboard.sval_protocol_version,
-            "svalboard": svalboard_state,
-            "vil": vil_data
-        }
-
-        profile_bytes = json.dumps(profile, indent=2).encode("utf-8")
-
-        if sys.platform == "emscripten":
-            import vialglue
-            vialglue.save_svalboard_profile(profile_bytes)
-        else:
-            dialog = QFileDialog()
-            dialog.setDefaultSuffix("svil")
-            dialog.setAcceptMode(QFileDialog.AcceptSave)
-            dialog.setNameFilters(["Svalboard profile (*.svil)"])
-            if dialog.exec() == QDialog.Accepted:
-                with open(dialog.selectedFiles()[0], "wb") as outf:
-                    outf.write(profile_bytes)
-
-    def on_svalboard_load(self):
-        """Load Svalboard profile (.svil) with layout and Svalboard settings"""
-        if sys.platform == "emscripten":
-            import vialglue
-            vialglue.load_svalboard_profile()
-            # Note: The loaded data will come back through on_layout_loaded
-        else:
-            dialog = QFileDialog()
-            dialog.setDefaultSuffix("svil")
-            dialog.setAcceptMode(QFileDialog.AcceptOpen)
-            dialog.setNameFilters(["Svalboard profile (*.svil)"])
-            if dialog.exec() == QDialog.Accepted:
-                with open(dialog.selectedFiles()[0], "rb") as inf:
-                    data = inf.read()
-                self._restore_svalboard_profile(data)
-
-    def _restore_svalboard_profile(self, data):
-        """Restore a Svalboard profile from bytes data"""
-        try:
-            profile = json.loads(data.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            QMessageBox.warning(self, "", f"Failed to parse profile: {e}")
-            return
-
-        # Check format
-        if profile.get("format") != "svil":
-            QMessageBox.warning(self, "", "Invalid Svalboard profile format.")
-            return
-
-        # Clear pending changes before loading - don't keep state unrelated to loaded file
-        ChangeManager.instance().clear()
-
-        # Check keyboard UID matches
-        vil_data = profile.get("vil", {})
-        if vil_data.get("uid") != self.keymap_editor.keyboard.keyboard_id:
-            ret = QMessageBox.question(
-                self, "",
-                tr("MainWindow", "Saved profile belongs to a different keyboard, "
-                                 "are you sure you want to continue?"),
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if ret != QMessageBox.Yes:
-                return
-
-        # Restore the .vil layout data
-        vil_bytes = json.dumps(vil_data).encode("utf-8")
-        self.keymap_editor.restore_layout(vil_bytes)
-
-        # Restore Svalboard settings
-        svalboard_data = profile.get("svalboard", {})
-        if svalboard_data:
-            self.svalboard_editor.restore_state(svalboard_data)
-
-        # Clear undo/redo stacks - load is a fresh start
-        ChangeManager.instance().clear()
-
-        self.rebuild()
 
     def on_click_refresh(self):
         self.autorefresh.update(quiet=False, hard=True)
@@ -511,6 +403,13 @@ class MainWindow(QMainWindow):
         # don't show "Security" menu for bootloader mode, as the bootloader is inherently insecure
         self.security_menu.menuAction().setVisible(isinstance(self.autorefresh.current_device, VialKeyboard))
 
+        # Show "Reset Dynamic Features" only for Viable keyboards
+        if isinstance(self.autorefresh.current_device, VialKeyboard):
+            viable = bool(getattr(self.autorefresh.current_device.keyboard, 'viable_protocol', False))
+            self.reset_dynamic_act.setVisible(viable)
+        else:
+            self.reset_dynamic_act.setVisible(False)
+
         self.about_keyboard_act.setVisible(False)
         if isinstance(self.autorefresh.current_device, VialKeyboard):
             self.about_keyboard_act.setText("About {}...".format(self.autorefresh.current_device.title()))
@@ -523,17 +422,8 @@ class MainWindow(QMainWindow):
 
         for e in [self.layout_editor, self.keymap_editor, self.firmware_flasher, self.macro_recorder,
                   self.tap_dance, self.combos, self.key_override, self.alt_repeat_key,
-                  self.qmk_settings, self.matrix_tester, self.rgb_configurator, self.svalboard_editor]:
+                  self.qmk_settings, self.matrix_tester, self.rgb_configurator, self.custom_ui_editor]:
             e.rebuild(self.autorefresh.current_device)
-
-        # Show Svalboard profile menu items only when a Svalboard is connected
-        # (must be after editors are rebuilt so svalboard_editor.valid() works)
-        is_svalboard = self.svalboard_editor.valid()
-        self.svalboard_load_act.setVisible(is_svalboard)
-        self.svalboard_save_act.setVisible(is_svalboard)
-
-        # Update User tab label to "Svalboard" when Svalboard is connected
-        TabbedKeycodes.update_user_tab_label(is_svalboard)
 
         # Update layer icons from keyboard colors (Svalboard or defaults)
         if self.tray_icon is not None:
@@ -557,7 +447,7 @@ class MainWindow(QMainWindow):
                     break
 
             # For Svalboard with --matrix-test, automatically select 2S layout
-            if self.initial_tab == "Matrix tester" and self.svalboard_editor.valid():
+            if self.initial_tab == "Matrix tester":
                 self.layout_editor.set_option_by_name("2S")
 
     def _update_tab_colors(self):
@@ -576,7 +466,7 @@ class MainWindow(QMainWindow):
             'Key Overrides': ('key_override',),
             'Alt Repeat Key': ('alt_repeat_key',),
             'QMK Settings': ('qmk_setting',),
-            'Svalboard': ('svalboard_settings', 'svalboard_layer_color'),
+            'Keyboard Settings': ('custom_value',),
         }
 
         # Find which editors have changes
@@ -657,6 +547,44 @@ class MainWindow(QMainWindow):
         if isinstance(self.autorefresh.current_device, VialKeyboard):
             Unlocker.unlock(self.autorefresh.current_device.keyboard)
             self.autorefresh.current_device.keyboard.reset()
+
+    def reset_dynamic_features(self):
+        """Reset all dynamic features (tap dance, combos, key overrides, alt repeat keys) to defaults."""
+        if not isinstance(self.autorefresh.current_device, VialKeyboard):
+            return
+
+        keyboard = self.autorefresh.current_device.keyboard
+        if not getattr(keyboard, 'viable_protocol', False):
+            return
+
+        # First confirmation
+        ret = QMessageBox.warning(
+            self, tr("MenuSecurity", "Reset Dynamic Features"),
+            tr("MenuSecurity", "This will clear all tap dances, combos, key overrides, and alt repeat keys.\n\nContinue?"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if ret != QMessageBox.Yes:
+            return
+
+        # Second confirmation
+        ret = QMessageBox.warning(
+            self, tr("MenuSecurity", "Confirm Reset"),
+            tr("MenuSecurity", "Are you sure? This cannot be undone."),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if ret != QMessageBox.Yes:
+            return
+
+        # Perform reset
+        keyboard.viable_reset()
+
+        # Clear pending changes for dynamic features
+        ChangeManager.instance().clear()
+
+        # Rebuild to reload all dynamic feature data
+        self.rebuild()
 
     def change_keyboard_layout(self, index):
         self.settings.setValue("keymap", KEYMAPS[index][0])
@@ -747,8 +675,7 @@ class MainWindow(QMainWindow):
             'key_override': 'Key Overrides',
             'alt_repeat_key': 'Alt Repeat Key',
             'qmk_setting': 'QMK Settings',
-            'svalboard_settings': 'Svalboard',
-            'svalboard_layer_color': 'Svalboard',
+            'custom_value': 'Keyboard Settings',
         }
 
         # Find the first affected change type and switch to that tab
@@ -820,8 +747,9 @@ class MainWindow(QMainWindow):
             return
         keyboard = self.autorefresh.current_device.keyboard
         if hasattr(keyboard, 'sval_layer_colors') and keyboard.sval_layer_colors:
-            for layer, (h, s, v) in enumerate(keyboard.sval_layer_colors):
-                self.tray_layer_icons[layer] = self._create_layer_icon(layer, h, s, v)
+            for layer, (h, s) in enumerate(keyboard.sval_layer_colors):
+                # V defaults to 255 for display (firmware controls actual brightness)
+                self.tray_layer_icons[layer] = self._create_layer_icon(layer, h, s, 255)
 
     def _tray_icon_label(self):
         """Get menu label with checkbox indicator"""

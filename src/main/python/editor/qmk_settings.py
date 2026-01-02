@@ -4,10 +4,11 @@ from collections import defaultdict
 
 from qtpy import QtCore
 from qtpy.QtCore import Signal, QObject
-from qtpy.QtWidgets import QVBoxLayout, QCheckBox, QGridLayout, QHBoxLayout, QLabel, QWidget, QSizePolicy, QTabWidget, QSpinBox, QFrame
+from qtpy.QtWidgets import QVBoxLayout, QCheckBox, QGridLayout, QHBoxLayout, QLabel, QWidget, QSizePolicy, QTabWidget, QSpinBox, QFrame, QFormLayout, QGroupBox
 
 from change_manager import ChangeManager, QmkSettingChange, QmkBitChange
 from editor.basic_editor import BasicEditor
+from editor.oneshot import OneShotChange
 from editor.settings_highlight_mixin import SettingsHighlightMixin
 from protocol.constants import VIAL_PROTOCOL_QMK_SETTINGS
 from vial_device import VialKeyboard
@@ -128,6 +129,12 @@ class QmkSettings(SettingsHighlightMixin, BasicEditor):
         self.tabs = []
         self.misc_widgets = []
 
+        # One-shot widgets (created dynamically in recreate_gui)
+        self.oneshot_timeout_spinbox = None
+        self.oneshot_tap_toggle_spinbox = None
+        self._oneshot_timeout = 0
+        self._oneshot_tap_toggle = 0
+
     def populate_tab(self, tab, container):
         options = []
         for field in tab["fields"]:
@@ -182,6 +189,106 @@ class QmkSettings(SettingsHighlightMixin, BasicEditor):
             self.tabs_widget.addTab(w2, tab["name"])
             self.tabs.append(self.populate_tab(tab, container))
 
+        # Add One-Shot tab if supported
+        self._create_oneshot_tab()
+
+    def _create_oneshot_tab(self):
+        """Create One-Shot settings tab if keyboard supports it."""
+        self.oneshot_timeout_spinbox = None
+        self.oneshot_tap_toggle_spinbox = None
+
+        if "oneshot" not in getattr(self.keyboard, "supported_features", set()):
+            return
+
+        # Create tab container
+        container = QWidget()
+        container.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Maximum)
+        main_layout = QVBoxLayout()
+        container.setLayout(main_layout)
+
+        # Group box for one-shot settings
+        group = QGroupBox("One-Shot Keys")
+        form_layout = QFormLayout()
+        group.setLayout(form_layout)
+
+        # Timeout setting
+        self.oneshot_timeout_spinbox = QSpinBox()
+        self.oneshot_timeout_spinbox.setRange(0, 65535)
+        self.oneshot_timeout_spinbox.setSuffix(" ms")
+        self.oneshot_timeout_spinbox.setToolTip(
+            "Time (in ms) before the one-shot key is released.\n"
+            "Set to 0 to disable timeout."
+        )
+        self.oneshot_timeout_spinbox.valueChanged.connect(self._on_oneshot_timeout_changed)
+        form_layout.addRow("Timeout:", self.oneshot_timeout_spinbox)
+
+        # Tap toggle setting
+        self.oneshot_tap_toggle_spinbox = QSpinBox()
+        self.oneshot_tap_toggle_spinbox.setRange(0, 255)
+        self.oneshot_tap_toggle_spinbox.setToolTip(
+            "Tapping this number of times holds the key until tapped once again.\n"
+            "Set to 0 to disable tap toggle."
+        )
+        self.oneshot_tap_toggle_spinbox.valueChanged.connect(self._on_oneshot_tap_toggle_changed)
+        form_layout.addRow("Tap Toggle:", self.oneshot_tap_toggle_spinbox)
+
+        main_layout.addWidget(group)
+        main_layout.addStretch()
+
+        # Wrap in centered layout
+        wrapper = QWidget()
+        wrapper_layout = QVBoxLayout()
+        wrapper_layout.addWidget(container)
+        wrapper_layout.setAlignment(container, QtCore.Qt.AlignHCenter)
+        wrapper.setLayout(wrapper_layout)
+
+        self.misc_widgets += [container, wrapper, group]
+        self.tabs_widget.addTab(wrapper, "One-Shot")
+
+    def _on_oneshot_timeout_changed(self, value):
+        """Handle oneshot timeout change."""
+        if value == self._oneshot_timeout:
+            return
+        cm = ChangeManager.instance()
+        change = OneShotChange(
+            self._oneshot_timeout, value,
+            self._oneshot_tap_toggle, self._oneshot_tap_toggle
+        )
+        cm.add_change(change)
+        self._oneshot_timeout = value
+        self.keyboard.oneshot_timeout = value
+
+    def _on_oneshot_tap_toggle_changed(self, value):
+        """Handle oneshot tap toggle change."""
+        if value == self._oneshot_tap_toggle:
+            return
+        cm = ChangeManager.instance()
+        change = OneShotChange(
+            self._oneshot_timeout, self._oneshot_timeout,
+            self._oneshot_tap_toggle, value
+        )
+        cm.add_change(change)
+        self._oneshot_tap_toggle = value
+        self.keyboard.oneshot_tap_toggle = value
+
+    def _reload_oneshot(self):
+        """Load oneshot settings from keyboard."""
+        if self.oneshot_timeout_spinbox is None:
+            return
+
+        timeout, tap_toggle = self.keyboard.oneshot_get()
+        self._oneshot_timeout = timeout
+        self._oneshot_tap_toggle = tap_toggle
+        self.keyboard.oneshot_timeout = timeout
+        self.keyboard.oneshot_tap_toggle = tap_toggle
+
+        self.oneshot_timeout_spinbox.blockSignals(True)
+        self.oneshot_tap_toggle_spinbox.blockSignals(True)
+        self.oneshot_timeout_spinbox.setValue(timeout)
+        self.oneshot_tap_toggle_spinbox.setValue(tap_toggle)
+        self.oneshot_timeout_spinbox.blockSignals(False)
+        self.oneshot_tap_toggle_spinbox.blockSignals(False)
+
     def reload_settings(self):
         self.keyboard.reload_settings()
         self.recreate_gui()
@@ -189,6 +296,9 @@ class QmkSettings(SettingsHighlightMixin, BasicEditor):
         for tab in self.tabs:
             for field in tab:
                 field.reload(self.keyboard)
+
+        # Load oneshot settings
+        self._reload_oneshot()
 
         # Just update UI state, don't track changes (this is initial load)
         self._update_ui_state()
@@ -266,10 +376,12 @@ class QmkSettings(SettingsHighlightMixin, BasicEditor):
     def _on_values_restored(self, affected_keys):
         """Refresh UI when settings are restored by undo/redo."""
         affected_qsid = None
+        affected_oneshot = False
         for key in affected_keys:
             if key[0] in ('qmk_setting', 'qmk_setting_bit'):
                 affected_qsid = key[1]  # ('qmk_setting', qsid) or ('qmk_setting_bit', qsid, bit)
-                break
+            elif key[0] == 'oneshot':
+                affected_oneshot = True
 
         if affected_qsid is not None:
             # Reload UI from keyboard.settings
@@ -285,14 +397,28 @@ class QmkSettings(SettingsHighlightMixin, BasicEditor):
                         self.tabs_widget.setCurrentIndex(tab_idx)
                         return
 
+        if affected_oneshot and self.oneshot_timeout_spinbox is not None:
+            # Reload oneshot UI from keyboard state
+            self.oneshot_timeout_spinbox.blockSignals(True)
+            self.oneshot_tap_toggle_spinbox.blockSignals(True)
+            self._oneshot_timeout = self.keyboard.oneshot_timeout
+            self._oneshot_tap_toggle = self.keyboard.oneshot_tap_toggle
+            self.oneshot_timeout_spinbox.setValue(self._oneshot_timeout)
+            self.oneshot_tap_toggle_spinbox.setValue(self._oneshot_tap_toggle)
+            self.oneshot_timeout_spinbox.blockSignals(False)
+            self.oneshot_tap_toggle_spinbox.blockSignals(False)
+
     def _on_saved(self):
         """Clear highlights after changes are pushed to device."""
         self._update_ui_state()
 
     def valid(self):
-        return isinstance(self.device, VialKeyboard) and \
-               (self.device.keyboard and self.device.keyboard.vial_protocol >= VIAL_PROTOCOL_QMK_SETTINGS
-                and len(self.device.keyboard.supported_settings))
+        if not isinstance(self.device, VialKeyboard) or not self.device.keyboard:
+            return False
+        kb = self.device.keyboard
+        has_qmk_settings = kb.viable_protocol and len(kb.supported_settings)
+        has_oneshot = "oneshot" in getattr(kb, "supported_features", set())
+        return has_qmk_settings or has_oneshot
 
     @classmethod
     def initialize(cls, appctx):

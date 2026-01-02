@@ -2,38 +2,40 @@
 import struct
 import json
 import lzma
+import logging
 from collections import OrderedDict
 
-from keycodes.keycodes import RESET_KEYCODE, Keycode, recreate_keyboard_keycodes
+from keycodes.keycodes import RESET_KEYCODE, Keycode, recreate_keyboard_keycodes, translate_keycode_v5_to_v6
 from kle_serial import Serial as KleSerial
 from protocol.alt_repeat_key import ProtocolAltRepeatKey
 from protocol.combo import ProtocolCombo
 from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOARD_VALUE, CMD_VIA_SET_KEYBOARD_VALUE, \
     CMD_VIA_SET_KEYCODE, CMD_VIA_LIGHTING_SET_VALUE, CMD_VIA_LIGHTING_GET_VALUE, CMD_VIA_LIGHTING_SAVE, \
-    CMD_VIA_GET_LAYER_COUNT, CMD_VIA_KEYMAP_GET_BUFFER, CMD_VIA_VIAL_PREFIX, VIA_LAYOUT_OPTIONS, \
-    VIA_SWITCH_MATRIX_STATE, QMK_BACKLIGHT_BRIGHTNESS, QMK_BACKLIGHT_EFFECT, QMK_RGBLIGHT_BRIGHTNESS, \
-    QMK_RGBLIGHT_EFFECT, QMK_RGBLIGHT_EFFECT_SPEED, QMK_RGBLIGHT_COLOR, VIALRGB_GET_INFO, VIALRGB_GET_MODE, \
-    VIALRGB_GET_SUPPORTED, VIALRGB_SET_MODE, CMD_VIAL_GET_KEYBOARD_ID, CMD_VIAL_GET_SIZE, CMD_VIAL_GET_DEFINITION, \
-    CMD_VIAL_GET_ENCODER, CMD_VIAL_SET_ENCODER, CMD_VIAL_GET_UNLOCK_STATUS, CMD_VIAL_UNLOCK_START, CMD_VIAL_UNLOCK_POLL, \
-    CMD_VIAL_LOCK, CMD_VIAL_QMK_SETTINGS_QUERY, CMD_VIAL_QMK_SETTINGS_GET, CMD_VIAL_QMK_SETTINGS_SET, \
-    CMD_VIAL_QMK_SETTINGS_RESET, BUFFER_FETCH_CHUNK, VIAL_PROTOCOL_QMK_SETTINGS
+    CMD_VIA_GET_LAYER_COUNT, CMD_VIA_KEYMAP_GET_BUFFER, CMD_VIA_ENCODER_GET, CMD_VIA_ENCODER_SET, \
+    CMD_VIA_CUSTOM_SET_VALUE, CMD_VIA_CUSTOM_GET_VALUE, CMD_VIA_CUSTOM_SAVE, \
+    VIA_LAYOUT_OPTIONS, VIA_SWITCH_MATRIX_STATE, QMK_BACKLIGHT_BRIGHTNESS, QMK_BACKLIGHT_EFFECT, \
+    QMK_RGBLIGHT_BRIGHTNESS, QMK_RGBLIGHT_EFFECT, QMK_RGBLIGHT_EFFECT_SPEED, QMK_RGBLIGHT_COLOR, \
+    VIALRGB_GET_INFO, VIALRGB_GET_MODE, VIALRGB_GET_SUPPORTED, VIALRGB_SET_MODE, BUFFER_FETCH_CHUNK, \
+    VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO, VIABLE_DEFINITION_SIZE, VIABLE_DEFINITION_CHUNK, \
+    VIABLE_QMK_SETTINGS_QUERY, VIABLE_QMK_SETTINGS_GET, VIABLE_QMK_SETTINGS_SET, VIABLE_QMK_SETTINGS_RESET
 from protocol.dynamic import ProtocolDynamic
 from protocol.key_override import ProtocolKeyOverride
 from protocol.macro import ProtocolMacro
 from protocol.svalboard import ProtocolSvalboard
 from protocol.tap_dance import ProtocolTapDance
+from protocol.viable import ProtocolViable
 from unlocker import Unlocker
 from util import MSG_LEN, hid_send
 
-SUPPORTED_VIA_PROTOCOL = [-1, 9]
-SUPPORTED_VIAL_PROTOCOL = [-1, 0, 1, 2, 3, 4, 5, 6]
+SUPPORTED_VIA_PROTOCOL = [-1, 12]  # -1 is initial/unknown, 12 is current QMK VIA
+SUPPORTED_VIABLE_PROTOCOL = [1]
 
 
 class ProtocolError(Exception):
     pass
 
 
-class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride, ProtocolAltRepeatKey, ProtocolSvalboard):
+class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride, ProtocolAltRepeatKey, ProtocolViable, ProtocolSvalboard):
     """ Low-level communication with a vial-enabled keyboard """
 
     def __init__(self, dev, usb_send=hid_send):
@@ -68,7 +70,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.rgb_hsv = (0, 0, 0)
         self.rgb_supported_effects = set()
 
-        self.via_protocol = self.vial_protocol = self.keyboard_id = -1
+        self.via_protocol = self.keyboard_id = -1
+        self.viable_protocol = None  # Viable 0xDF protocol version, or None if not supported
 
     def reload(self, sideload_json=None):
         """ Load information about the keyboard: number of layers, physical key layout """
@@ -84,9 +87,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.reload_macros_early()
         self.reload_persistent_rgb()
         self.reload_rgb()
-        self.reload_settings()
 
         self.reload_dynamic()
+
+        # Load QMK settings after reload_dynamic so viable_protocol is set
+        self.reload_settings()
 
         # Load macro data early so preview text is available for keycode labels
         self.reload_macros_late()
@@ -108,16 +113,22 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.layers = self.usb_send(self.dev, struct.pack("B", CMD_VIA_GET_LAYER_COUNT), retries=20)[1]
 
     def reload_via_protocol(self):
+        logging.debug(" Sending CMD_VIA_GET_PROTOCOL_VERSION (0x%02X)", CMD_VIA_GET_PROTOCOL_VERSION)
         data = self.usb_send(self.dev, struct.pack("B", CMD_VIA_GET_PROTOCOL_VERSION), retries=20)
+        logging.debug(" Received: %s", data.hex())
         self.via_protocol = struct.unpack(">H", data[1:3])[0]
+        logging.debug(" VIA protocol version: %d", self.via_protocol)
 
     def check_protocol_version(self):
-        if self.via_protocol not in SUPPORTED_VIA_PROTOCOL or self.vial_protocol not in SUPPORTED_VIAL_PROTOCOL:
+        if self.via_protocol not in SUPPORTED_VIA_PROTOCOL:
+            raise ProtocolError()
+        if self.viable_protocol and self.viable_protocol not in SUPPORTED_VIABLE_PROTOCOL:
             raise ProtocolError()
 
     def reload_layout(self, sideload_json=None):
         """ Requests layout data from the current device """
 
+        logging.debug(" reload_layout() starting")
         self.reload_via_protocol()
 
         self.sideload = False
@@ -125,27 +136,53 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             self.sideload = True
             payload = sideload_json
         else:
-            # get keyboard identification
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
-            self.vial_protocol, self.keyboard_id = struct.unpack("<IQ", data[0:12])
+            # Probe for Viable 0xDF protocol (v2)
+            logging.debug(" Sending VIABLE_GET_PROTOCOL_INFO (0x%02X 0x%02X)", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO)
+            data = self.usb_send(self.dev, struct.pack("BB", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO), retries=5)
+            logging.debug(" Received: %s", data.hex())
+            # v2 Response: [0xDF] [0x00] [ver0-3] [td_count] [combo_count] [ko_count] [ark_count] [flags] [uid0-7]
+            if data[0] != VIABLE_PREFIX or data[1] != VIABLE_GET_PROTOCOL_INFO:
+                # VIA-only board - no Viable protocol support
+                logging.info("Keyboard does not support Viable protocol (VIA-only board)")
+                self.viable_protocol = None
+                raise RuntimeError("VIA-only keyboard detected. Please sideload a JSON definition file.")
+            version = struct.unpack("<I", bytes(data[2:6]))[0]
+            logging.debug(" Viable protocol version: %d", version)
+            if version == 0:
+                raise RuntimeError("Invalid Viable protocol version")
+            self.viable_protocol = version
+            # Read keyboard UID (8 bytes at offset 11, for .vil compatibility)
+            self.keyboard_id = struct.unpack("<Q", bytes(data[11:19]))[0]
+            logging.debug(" Keyboard UID: 0x%016X", self.keyboard_id)
 
-            # get the size
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_SIZE), retries=20)
-            sz = struct.unpack("<I", data[0:4])[0]
+            # get the size via Viable protocol
+            logging.debug(" Sending VIABLE_DEFINITION_SIZE (0x%02X 0x%02X)", VIABLE_PREFIX, VIABLE_DEFINITION_SIZE)
+            data = self.usb_send(self.dev, struct.pack("BB", VIABLE_PREFIX, VIABLE_DEFINITION_SIZE), retries=20)
+            logging.debug(" Received: %s", data.hex())
+            # Response: [0xDF] [0x0D] [size0-3]
+            sz = struct.unpack("<I", bytes(data[2:6]))[0]
+            logging.debug(" Definition size: %d bytes", sz)
 
-            # get the payload
+            # get the payload via Viable protocol
             payload = b""
-            block = 0
-            while sz > 0:
-                data = self.usb_send(self.dev, struct.pack("<BBI", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_DEFINITION, block),
+            offset = 0
+            logging.debug(" Fetching definition chunks...")
+            while offset < sz:
+                data = self.usb_send(self.dev, struct.pack("<BBH", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset),
                                      retries=20)
-                if sz < MSG_LEN:
-                    data = data[:sz]
-                payload += data
-                block += 1
-                sz -= MSG_LEN
+                # Response: [0xDF] [0x0E] [offset_lo] [offset_hi] [28 bytes data]
+                chunk = data[4:4 + BUFFER_FETCH_CHUNK]
+                remaining = sz - offset
+                if remaining < BUFFER_FETCH_CHUNK:
+                    chunk = chunk[:remaining]
+                payload += chunk
+                offset += BUFFER_FETCH_CHUNK
+                if offset % 280 == 0:  # Log every 10 chunks
+                    logging.debug(" Fetched %d/%d bytes", offset, sz)
 
+            logging.debug(" All chunks fetched, decompressing %d bytes", len(payload))
             payload = json.loads(lzma.decompress(payload))
+            logging.debug(" Decompression successful")
 
         self.check_protocol_version()
 
@@ -221,10 +258,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
         for layer in range(self.layers):
             for idx in self.encoderpos:
-                data = self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_ENCODER, layer, idx),
-                                     retries=20)
-                self.encoder_layout[(layer, idx, 0)] = Keycode.serialize(struct.unpack(">H", data[0:2])[0])
-                self.encoder_layout[(layer, idx, 1)] = Keycode.serialize(struct.unpack(">H", data[2:4])[0])
+                # VIA3: one call per direction, keycode at bytes 3-4
+                data = self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_ENCODER_GET, layer, idx, 0), retries=20)
+                self.encoder_layout[(layer, idx, 0)] = Keycode.serialize(struct.unpack(">H", data[3:5])[0])
+                data = self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_ENCODER_GET, layer, idx, 1), retries=20)
+                self.encoder_layout[(layer, idx, 1)] = Keycode.serialize(struct.unpack(">H", data[3:5])[0])
 
         if self.layout_labels:
             data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_GET_KEYBOARD_VALUE, VIA_LAYOUT_OPTIONS),
@@ -291,28 +329,35 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def reload_settings(self):
         self.settings = dict()
         self.supported_settings = set()
-        if self.vial_protocol < VIAL_PROTOCOL_QMK_SETTINGS:
-            return
+
+        # Query supported QSIDs via 0xDF protocol
         cur = 0
         while cur != 0xFFFF:
-            data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_QUERY, cur),
+            data = self.usb_send(self.dev, struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_QUERY, cur),
                                  retries=20)
-            for x in range(0, len(data), 2):
+            # Response: [0xDF] [0x10] [qsid1_lo] [qsid1_hi] ... [0xFF] [0xFF]
+            # Firmware fills unused entries with 0xFFFF, so stop when we hit it
+            for x in range(2, len(data), 2):
                 qsid = int.from_bytes(data[x:x+2], byteorder="little")
+                if qsid == 0xFFFF:
+                    cur = 0xFFFF
+                    break
                 cur = max(cur, qsid)
-                if qsid != 0xFFFF:
-                    self.supported_settings.add(qsid)
+                self.supported_settings.add(qsid)
 
+        # Get values for supported settings
         for qsid in self.supported_settings:
             from editor.qmk_settings import QmkSettings
 
             if not QmkSettings.is_qsid_supported(qsid):
                 continue
 
-            data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_GET, qsid),
+            # Request: [0xDF] [0x11] [qsid_lo] [qsid_hi]
+            # Response: [0xDF] [0x11] [status] [value bytes...]
+            data = self.usb_send(self.dev, struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_GET, qsid),
                                  retries=20)
-            if data[0] == 0:
-                self.settings[qsid] = QmkSettings.qsid_deserialize(qsid, data[1:])
+            if data[2] == 0:  # status = success
+                self.settings[qsid] = QmkSettings.qsid_deserialize(qsid, data[3:])
 
     def set_key(self, layer, row, col, code):
         key = (layer, row, col)
@@ -336,18 +381,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def set_encoder(self, layer, index, direction, code):
         key = (layer, index, direction)
         if self.encoder_layout[key] != code:
-            if code == RESET_KEYCODE:
-                Unlocker.unlock(self)
-
-            self.usb_send(self.dev, struct.pack(">BBBBBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_SET_ENCODER,
+            # VIA3: [0x15] [layer] [encoder_id] [direction] [keycode_hi] [keycode_lo]
+            self.usb_send(self.dev, struct.pack(">BBBBH", CMD_VIA_ENCODER_SET,
                                                 layer, index, direction, Keycode.deserialize(code)), retries=20)
             self.encoder_layout[key] = code
 
     def _commit_encoder(self, layer, index, direction, code):
         """Send an encoder change to the device (used by ChangeManager)."""
-        if code == RESET_KEYCODE:
-            Unlocker.unlock(self)
-        self.usb_send(self.dev, struct.pack(">BBBBBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_SET_ENCODER,
+        # VIA3: [0x15] [layer] [encoder_id] [direction] [keycode_hi] [keycode_lo]
+        self.usb_send(self.dev, struct.pack(">BBBBH", CMD_VIA_ENCODER_SET,
                                             layer, index, direction, Keycode.deserialize(code)), retries=20)
         self.encoder_layout[(layer, index, direction)] = code
         return True
@@ -392,6 +434,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """ Serializes current layout to a binary """
 
         data = {"version": 1, "uid": self.keyboard_id}
+        # Add keyboard name for better matching (UID is 0 for all Viable keyboards)
+        if self.definition:
+            data["name"] = self.definition.get("keyboard_name", "")
 
         layout = []
         for l in range(self.layers):
@@ -418,12 +463,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         data["encoder_layout"] = encoder_layout
         data["layout_options"] = self.layout_options
         data["macro"] = self.save_macro()
-        data["vial_protocol"] = self.vial_protocol
+        data["viable_protocol"] = self.viable_protocol
         data["via_protocol"] = self.via_protocol
         data["tap_dance"] = self.save_tap_dance()
         data["combo"] = self.save_combo()
         data["key_override"] = self.save_key_override()
         data["alt_repeat_key"] = self.save_alt_repeat_key()
+        data["oneshot"] = self.save_oneshot()
         data["settings"] = self.settings
 
         return json.dumps(data).encode("utf-8")
@@ -433,18 +479,44 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
         data = json.loads(data.decode("utf-8"))
 
+        # Check if we need to translate keycodes from v5 to v6 format
+        # VIA protocol < 12 used v5 keycodes, >= 12 uses v6
+        # Files without via_protocol are old and need translation
+        saved_via_protocol = data.get("via_protocol")
+        needs_translation = (saved_via_protocol is None or saved_via_protocol < 12) and self.via_protocol >= 12
+
+        # Check if we need to fix USER keycodes saved at wrong location
+        # svil_version 1 and .vil files had USER at 0x7E00-0x7E3F, should be 0x7E40-0x7E7F
+        svil_version = data.get("svil_version")
+        needs_user_fix = svil_version is None or svil_version == 1
+
+        def translate_code(code):
+            """Translate keycode if needed, handling both int and string formats."""
+            # String keycodes (like "M0", "KC_A") are protocol-agnostic and get
+            # deserialized with the current protocol - no translation needed.
+            # Only integer keycodes stored in v5 format need translation.
+            was_string = isinstance(code, str)
+            if was_string:
+                code = Keycode.deserialize(code)
+            if needs_translation and not was_string:
+                code = translate_keycode_v5_to_v6(code)
+            # Fix USER keycodes that were incorrectly saved at QK_KB range
+            if needs_user_fix and 0x7E00 <= code <= 0x7E3F:
+                code = code + 0x40
+            return Keycode.serialize(code)
+
         # restore keymap
         for l, layer in enumerate(data["layout"]):
             for r, row in enumerate(layer):
                 for c, code in enumerate(row):
                     if (l, r, c) in self.layout:
-                        self.set_key(l, r, c, Keycode.serialize(Keycode.deserialize(code)))
+                        self.set_key(l, r, c, translate_code(code))
 
         # restore encoders
         for l, layer in enumerate(data["encoder_layout"]):
             for e, encoder in enumerate(layer):
-                self.set_encoder(l, e, 0, Keycode.serialize(Keycode.deserialize(encoder[0])))
-                self.set_encoder(l, e, 1, Keycode.serialize(Keycode.deserialize(encoder[1])))
+                self.set_encoder(l, e, 0, translate_code(encoder[0]))
+                self.set_encoder(l, e, 1, translate_code(encoder[1]))
 
         self.set_layout_options(data["layout_options"])
         self.restore_macros(data.get("macro"))
@@ -453,6 +525,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.restore_combo(data.get("combo", []))
         self.restore_key_override(data.get("key_override", []))
         self.restore_alt_repeat_key(data.get("alt_repeat_key", []))
+        self.restore_oneshot(data.get("oneshot"))
 
         for qsid, value in data.get("settings", dict()).items():
             from editor.qmk_settings import QmkSettings
@@ -466,62 +539,33 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.dev.close()
 
     def get_uid(self):
-        """ Retrieve UID from the keyboard, explicitly sending a query packet """
-        data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID), retries=20)
-        keyboard_id = data[4:12]
-        return keyboard_id
+        """ Retrieve UID from the keyboard - stub, Vial protocol removed """
+        return bytes(8)
 
     def get_unlock_status(self, retries=20):
-        # VIA keyboards are always unlocked
-        if self.vial_protocol < 0:
-            return 1
-
-        data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_UNLOCK_STATUS),
-                             retries=retries)
-        return data[0]
+        # Vial unlock removed - always unlocked
+        return 1
 
     def get_unlock_in_progress(self):
-        # VIA keyboards are never being unlocked
-        if self.vial_protocol < 0:
-            return 0
-
-        data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_UNLOCK_STATUS), retries=20)
-        return data[1]
+        # Vial unlock removed
+        return 0
 
     def get_unlock_keys(self):
         """ Return keys users have to hold to unlock the keyboard as a list of rowcols """
-
-        # VIA keyboards don't have unlock keys
-        if self.vial_protocol < 0:
-            return []
-
-        data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_UNLOCK_STATUS), retries=20)
-        rowcol = []
-        for x in range(15):
-            row = data[2 + x * 2]
-            col = data[3 + x * 2]
-            if row != 255 and col != 255:
-                rowcol.append((row, col))
-        return rowcol
+        # Vial unlock removed
+        return []
 
     def unlock_start(self):
-        if self.vial_protocol < 0:
-            return
-
-        self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_UNLOCK_START), retries=20)
+        # Vial unlock removed
+        pass
 
     def unlock_poll(self):
-        if self.vial_protocol < 0:
-            return b""
-
-        data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_UNLOCK_POLL), retries=20)
-        return data
+        # Vial unlock removed
+        return bytes([1, 0, 0])
 
     def lock(self):
-        if self.vial_protocol < 0:
-            return
-
-        self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_LOCK), retries=20)
+        # Vial unlock removed
+        pass
 
     def matrix_poll(self):
         if self.via_protocol < 0:
@@ -533,23 +577,39 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
     def qmk_settings_set(self, qsid, value):
         from editor.qmk_settings import QmkSettings
-        self.settings[qsid] = value
-        data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_SET, qsid)
-                             + QmkSettings.qsid_serialize(qsid, value),
-                             retries=20)
-        return data[0]
+
+        # Serialize value to bytes
+        value_bytes = QmkSettings.qsid_serialize(qsid, value)
+        # Request: [0xDF] [0x12] [qsid_lo] [qsid_hi] [value bytes...]
+        msg = struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_SET, qsid) + value_bytes
+        data = self.usb_send(self.dev, msg, retries=20)
+        # Response: [0xDF] [0x12] [status]
+        status = data[2]
+        if status == 0:
+            self.settings[qsid] = value
+        return status
 
     def _commit_qmk_setting(self, qsid, value):
         """Send a QMK setting change to the device (used by ChangeManager)."""
         from editor.qmk_settings import QmkSettings
-        self.settings[qsid] = value
-        data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_SET, qsid)
-                             + QmkSettings.qsid_serialize(qsid, value),
-                             retries=20)
-        return data[0] == 0
+
+        # Serialize value to bytes
+        value_bytes = QmkSettings.qsid_serialize(qsid, value)
+        # Request: [0xDF] [0x12] [qsid_lo] [qsid_hi] [value bytes...]
+        msg = struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_SET, qsid) + value_bytes
+        data = self.usb_send(self.dev, msg, retries=20)
+        # Response: [0xDF] [0x12] [status]
+        status = data[2]
+        if status == 0:
+            self.settings[qsid] = value
+            return True
+        return False
 
     def qmk_settings_reset(self):
-        self.usb_send(self.dev, struct.pack("BB", CMD_VIA_VIAL_PREFIX, CMD_VIAL_QMK_SETTINGS_RESET))
+        # Request: [0xDF] [0x13]
+        self.usb_send(self.dev, struct.pack("BB", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_RESET), retries=20)
+        # Reload settings from firmware
+        self.reload_settings()
 
     def _vialrgb_set_mode(self):
         self.usb_send(self.dev, struct.pack("BBHBBBB", CMD_VIA_LIGHTING_SET_VALUE, VIALRGB_SET_MODE,
@@ -571,3 +631,68 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def set_vialrgb_color(self, h, s, v):
         self.rgb_hsv = (h, s, v)
         self._vialrgb_set_mode()
+
+    @property
+    def custom_ui(self):
+        """Return VIA3 custom_ui definition (menus) from keyboard definition."""
+        if not self.definition:
+            return None
+        menus = self.definition.get("menus")
+        if not menus:
+            return None
+        return {"menus": menus}
+
+    def custom_value_get(self, channel, value_id):
+        """
+        Get a custom value from the keyboard using VIA custom value protocol.
+
+        Packet: [0x08] [channel] [value_id]
+        Response: [0x08] [channel] [value_id] [data...]
+
+        VIA channels:
+        - 0: Keyboard-specific custom values
+        - 1: QMK backlight
+        - 2: QMK rgblight
+        - 3: QMK rgb_matrix
+        - 4: QMK audio
+        - 5: QMK led_matrix
+        """
+        msg = struct.pack("BBB", CMD_VIA_CUSTOM_GET_VALUE, channel, value_id)
+        data = self.usb_send(self.dev, msg, retries=20)
+        # Response: [cmd] [channel] [value_id] [data...]
+        return data[3:] if len(data) > 3 else bytes()
+
+    def custom_value_set(self, channel, value_id, data):
+        """
+        Set a custom value on the keyboard using VIA custom value protocol.
+
+        Packet: [0x07] [channel] [value_id] [data...]
+        """
+        msg = struct.pack("BBB", CMD_VIA_CUSTOM_SET_VALUE, channel, value_id) + bytes(data)
+        self.usb_send(self.dev, msg, retries=20)
+
+    def custom_value_save(self, channel):
+        """
+        Save custom values to EEPROM using VIA custom value protocol.
+
+        Packet: [0x09] [channel]
+        """
+        msg = struct.pack("BB", CMD_VIA_CUSTOM_SAVE, channel)
+        self.usb_send(self.dev, msg, retries=20)
+
+    def _commit_custom_value(self, channel, value_id, data):
+        """
+        Commit a custom value change (set value and save to EEPROM).
+
+        Used by ChangeManager for applying custom value changes.
+        """
+        try:
+            self.custom_value_set(channel, value_id, data)
+            self.custom_value_save(channel)
+            # Update local cache
+            if not hasattr(self, 'custom_values'):
+                self.custom_values = {}
+            self.custom_values[(channel, value_id)] = data
+            return True
+        except Exception:
+            return False

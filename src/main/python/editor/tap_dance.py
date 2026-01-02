@@ -2,10 +2,9 @@
 from qtpy import QtCore
 from qtpy.QtCore import Signal, QObject, Qt
 from qtpy.QtWidgets import (QWidget, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel,
-                             QPushButton, QSpinBox, QScrollArea, QGridLayout)
+                             QPushButton, QSpinBox, QScrollArea, QGridLayout, QCheckBox)
 
 from change_manager import ChangeManager, TapDanceChange
-from protocol.constants import VIAL_PROTOCOL_DYNAMIC
 from widgets.key_widget import KeyWidget
 from tabbed_keycodes import TabbedKeycodes
 from vial_device import VialKeyboard
@@ -48,6 +47,11 @@ class TapDanceEntryUI(QObject):
         term_header.setAlignment(Qt.AlignCenter)
         self.container.addWidget(term_header, 0, 5)
 
+        enabled_header = QLabel("On")
+        enabled_header.setStyleSheet("font-size: 9px; color: palette(text);")
+        enabled_header.setAlignment(Qt.AlignCenter)
+        self.container.addWidget(enabled_header, 0, 6)
+
         # Row 1: Keys and tapping term
         self.kc_on_tap = KeyWidget()
         self.kc_on_tap.changed.connect(lambda: self.on_key_changed_at(0))
@@ -77,6 +81,11 @@ class TapDanceEntryUI(QObject):
         self.txt_tapping_term.valueChanged.connect(self.on_timing_changed_internal)
         self.container.addWidget(self.txt_tapping_term, 1, 5)
 
+        self.enabled_checkbox = QCheckBox()
+        self.enabled_checkbox.setChecked(True)
+        self.enabled_checkbox.stateChanged.connect(self.on_enabled_changed)
+        self.container.addWidget(self.enabled_checkbox, 1, 6, Qt.AlignCenter)
+
         # Create the widget
         self.widget_container = QWidget()
         self.widget_container.setObjectName("tapDanceEntry")
@@ -99,7 +108,7 @@ class TapDanceEntryUI(QObject):
 
     def load(self, data):
         objs = [self.kc_on_tap, self.kc_on_hold, self.kc_on_double_tap,
-                self.kc_on_tap_hold, self.txt_tapping_term]
+                self.kc_on_tap_hold, self.txt_tapping_term, self.enabled_checkbox]
         for o in objs:
             o.blockSignals(True)
 
@@ -107,18 +116,24 @@ class TapDanceEntryUI(QObject):
         self.kc_on_hold.set_keycode(data[1])
         self.kc_on_double_tap.set_keycode(data[2])
         self.kc_on_tap_hold.set_keycode(data[3])
-        self.txt_tapping_term.setValue(data[4])
+        # custom_tapping_term: bit 15 = enabled, bits 0-14 = timing
+        self.txt_tapping_term.setValue(data[4] & 0x7FFF)
+        self.enabled_checkbox.setChecked(bool(data[4] & 0x8000))
 
         for o in objs:
             o.blockSignals(False)
 
     def save(self):
+        # Use checkbox for enabled bit
+        timing = self.txt_tapping_term.value() & 0x7FFF
+        if self.enabled_checkbox.isChecked():
+            timing |= 0x8000  # Set enabled bit
         return (
             self.kc_on_tap.keycode,
             self.kc_on_hold.keycode,
             self.kc_on_double_tap.keycode,
             self.kc_on_tap_hold.keycode,
-            self.txt_tapping_term.value()
+            timing
         )
 
     def is_empty(self):
@@ -143,6 +158,9 @@ class TapDanceEntryUI(QObject):
 
     def on_timing_changed_internal(self):
         self.timing_changed.emit(self.idx)
+
+    def on_enabled_changed(self):
+        self.key_changed.emit(self.idx)
 
     def delete_widgets(self):
         """Clean up widgets for deletion"""
@@ -287,7 +305,7 @@ class TapDance(BasicEditor):
 
     def valid(self):
         return isinstance(self.device, VialKeyboard) and \
-               (self.device.keyboard and self.device.keyboard.vial_protocol >= VIAL_PROTOCOL_DYNAMIC
+               (self.device.keyboard and self.device.keyboard.viable_protocol
                 and self.device.keyboard.tap_dance_count > 0)
 
     def _apply_change(self, idx):

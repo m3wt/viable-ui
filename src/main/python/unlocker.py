@@ -108,21 +108,8 @@ class Unlocker(QDialog):
 
     @classmethod
     def unlock(cls, keyboard):
-        if keyboard.get_unlock_status() == 1:
-            return True
-
-        cls.dlg_retval = None
-        dlg = cls(cls.global_layout_editor, keyboard)
-        dlg.finished.connect(cls.on_dialog_finished)
-        cls.global_main_window.lock_ui()
-        dlg.setModal(True)
-        dlg.show()
-        while cls.dlg_retval is None:
-            time.sleep(0.05)
-            QCoreApplication.processEvents()
-        ret = cls.dlg_retval
-        cls.global_main_window.unlock_ui()
-        return ret
+        # Vial unlock removed - always unlocked
+        return True
 
     def keyPressEvent(self, ev):
         """ Ignore all key presses, e.g. Esc should not close the window """

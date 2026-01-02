@@ -25,7 +25,18 @@ pip install -r requirements-build.txt
 
 echo "Running Nuitka build..."
 export QT_API=pyside6
-./build-nuitka/build-linux.sh
+
+# Build with Nuitka
+mkdir -p nuitka-output
+python -m nuitka \
+    --standalone \
+    --enable-plugin=pyside6 \
+    --include-data-dir=src/main/resources/base=resources/base \
+    --include-data-file=src/build/settings/base.json=build_settings.json \
+    --output-dir=nuitka-output \
+    --output-filename=Vial \
+    --assume-yes-for-downloads \
+    src/main/python/main.py
 
 deactivate
 
@@ -38,7 +49,7 @@ mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "$APPDIR/usr/share/applications"
 
 # Copy Nuitka output
-cp -a build-nuitka/output/main.dist/* "$APPDIR/usr/bin/"
+cp -a nuitka-output/main.dist/* "$APPDIR/usr/bin/"
 
 # Bundle system libraries for portability
 # Note: We copy specific versions and create symlinks as needed

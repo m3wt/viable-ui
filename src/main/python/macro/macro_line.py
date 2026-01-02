@@ -4,7 +4,6 @@ from qtpy.QtCore import QObject, Signal, Qt
 from qtpy.QtWidgets import QHBoxLayout, QToolButton, QComboBox
 
 from macro.macro_action_ui import ActionTextUI, ActionDownUI, ActionUpUI, ActionTapUI, ActionDelayUI
-from protocol.constants import VIAL_PROTOCOL_ADVANCED_MACROS
 
 
 class MacroLine(QObject):
@@ -20,7 +19,8 @@ class MacroLine(QObject):
         self.parent = parent
         self.container = parent.container
 
-        if self.parent.parent.keyboard.vial_protocol >= VIAL_PROTOCOL_ADVANCED_MACROS:
+        # Viable always supports delays
+        if self.parent.parent.keyboard.viable_protocol:
             self.types = self.types[:] + ["Delay (ms)"]
             self.type_to_cls = self.type_to_cls[:] + [ActionDelayUI]
 
