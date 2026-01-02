@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [master, main, nuitka, sval-gui]
+    branches: [viable]
   pull_request:
   workflow_dispatch:
 
@@ -302,7 +302,7 @@ jobs:
         path: web/build
 
   deploy-web:
-    if: github.ref == 'refs/heads/sval-gui'
+    if: github.ref == 'refs/heads/viable'
     needs: build-web
     runs-on: ubuntu-22.04
     permissions:
