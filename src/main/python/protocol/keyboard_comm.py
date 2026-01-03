@@ -486,9 +486,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         needs_translation = (saved_via_protocol is None or saved_via_protocol < 12) and self.via_protocol >= 12
 
         # Check if we need to fix USER keycodes saved at wrong location
-        # svil_version 1 and .vil files had USER at 0x7E00-0x7E3F, should be 0x7E40-0x7E7F
-        svil_version = data.get("svil_version")
-        needs_user_fix = svil_version is None or svil_version == 1
+        # Older .vil files had USER at 0x7E00-0x7E3F, should be 0x7E40-0x7E7F
+        needs_user_fix = data.get("vil_version", 0) < 2
 
         def translate_code(code):
             """Translate keycode if needed, handling both int and string formats."""

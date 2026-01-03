@@ -1129,7 +1129,7 @@ def create_custom_user_keycodes(custom_keycodes):
 
 
 def create_macro_keycodes(count=128):
-    """Create default macro keycodes for .vil/.svil loading compatibility"""
+    """Create default macro keycodes for .vil loading compatibility"""
     KEYCODES_MACRO.clear()
     for x in range(count):
         qmk_id = "M{}".format(x)
@@ -1229,7 +1229,7 @@ def recreate_keyboard_keycodes(keyboard):
         kc.hidden = not kc.is_supported_by(keyboard)
 
 
-# Initialize USER and MACRO keycodes at module load for .vil/.svil loading compatibility
+# Initialize USER and MACRO keycodes at module load for .vil loading compatibility
 create_user_keycodes()
 create_macro_keycodes()
 recreate_keycodes()

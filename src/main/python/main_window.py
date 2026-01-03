@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
 
         self.ui_lock_count = 0
 
-        self.settings = QSettings("Vial", "Vial")
+        self.settings = QSettings("Viable", "Viable")
         if self.settings.value("size", None):
             self.resize(self.settings.value("size"))
         else:
@@ -116,7 +116,7 @@ class MainWindow(QMainWindow):
         cm = ChangeManager.instance()
         cm.changed.connect(self._update_tab_colors)
 
-        no_devices = 'No devices detected. Connect a Vial-compatible device and press "Refresh"<br>' \
+        no_devices = 'No devices detected. Connect a Viable-compatible device and press "Refresh"<br>' \
                      'or select "File" → "Download VIA definitions" in order to enable support for VIA keyboards.'
         if sys.platform.startswith("linux"):
             no_devices += '<br><br>On Linux you need to set up a custom udev rule for keyboards to be detected. ' \
@@ -278,7 +278,7 @@ class MainWindow(QMainWindow):
         if theme_group.checkedAction() is None:
             theme_group.actions()[0].setChecked(True)
 
-        about_vial_act = QAction(tr("MenuAbout", "About Vial..."), self)
+        about_vial_act = QAction(tr("MenuAbout", "About Viable..."), self)
         about_vial_act.triggered.connect(self.about_vial)
         self.about_keyboard_act = QAction("", self)
         self.about_keyboard_act.triggered.connect(self.about_keyboard)
@@ -304,9 +304,9 @@ class MainWindow(QMainWindow):
             vialglue.load_layout()
         else:
             dialog = QFileDialog()
-            dialog.setDefaultSuffix("vbl")
+            dialog.setDefaultSuffix("viable")
             dialog.setAcceptMode(QFileDialog.AcceptOpen)
-            dialog.setNameFilters(["Viable layout (*.vbl)", "Vial layout (*.vil)", "All files (*)"])
+            dialog.setNameFilters(["Viable layout (*.viable)", "Vial layout (*.vil)", "All files (*)"])
             if dialog.exec() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "rb") as inf:
                     data = inf.read()
@@ -324,9 +324,9 @@ class MainWindow(QMainWindow):
             vialglue.save_layout(layout)
         else:
             dialog = QFileDialog()
-            dialog.setDefaultSuffix("vbl")
+            dialog.setDefaultSuffix("viable")
             dialog.setAcceptMode(QFileDialog.AcceptSave)
-            dialog.setNameFilters(["Viable layout (*.vbl)"])
+            dialog.setNameFilters(["Viable layout (*.viable)"])
             if dialog.exec() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "wb") as outf:
                     outf.write(self.keymap_editor.save_layout())
@@ -371,7 +371,7 @@ class MainWindow(QMainWindow):
             self.autorefresh.select_device(self.combobox_devices.currentIndex())
         except ProtocolError:
             QMessageBox.warning(self, "", "Unsupported protocol version!\n"
-                                          "Please download latest Vial from https://get.vial.today/")
+                                          "Please download latest Viable from https://github.com/viable-kb/gui")
 
         # Set keyboard on ChangeManager
         if isinstance(self.autorefresh.current_device, VialKeyboard):
@@ -389,7 +389,7 @@ class MainWindow(QMainWindow):
                 msg.setText("Your Svalboard firmware is newer than this GUI supports.<br>"
                             "Svalboard features are disabled.<br><br>"
                             "Please update the GUI from "
-                            "<a href='https://github.com/svalboard/vial-gui'>github.com/svalboard/vial-gui</a>")
+                            "<a href='https://github.com/viable-kb/gui'>github.com/viable-kb/gui</a>")
                 msg.setTextFormat(Qt.RichText)
                 msg.setTextInteractionFlags(Qt.TextBrowserInteraction)
                 msg.exec()
@@ -628,10 +628,10 @@ class MainWindow(QMainWindow):
         self.current_tab = new_tab
 
     def about_vial(self):
-        title = "About Vial"
-        text = 'Vial {}<br><br>Python {}<br>Qt {}<br><br>' \
+        title = "About Viable"
+        text = 'Viable {}<br><br>Python {}<br>Qt {}<br><br>' \
                'Licensed under the terms of the<br>GNU General Public License (version 2 or later)<br><br>' \
-               '<a href="https://get.vial.today/">https://get.vial.today/</a>' \
+               '<a href="https://github.com/viable-kb/gui">https://github.com/viable-kb/gui</a>' \
                .format(qApp.applicationVersion(),
                        platform.python_version(), qVersion())
 

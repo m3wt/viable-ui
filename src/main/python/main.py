@@ -58,7 +58,7 @@ class VialApplicationContext(ApplicationContext):
         # Override the app definition in order to set WM_CLASS.
         result = QtWidgets.QApplication(sys.argv)
         result.setApplicationName(self.build_settings["app_name"])
-        result.setOrganizationDomain("vial.today")
+        result.setOrganizationDomain("viable-kb.github.io")
 
         #TODO: Qt sets applicationVersion on non-Linux platforms if the exe/pkg metadata is correctly configured.
         # https://doc.qt.io/qt-5/qcoreapplication.html#applicationVersion-prop

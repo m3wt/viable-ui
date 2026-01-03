@@ -12,10 +12,9 @@ from main_window import MainWindow
 
 
 
-from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_VIAL_PREFIX, CMD_VIAL_GET_KEYBOARD_ID, \
-    CMD_VIAL_GET_SIZE, CMD_VIAL_GET_DEFINITION, CMD_VIA_GET_LAYER_COUNT, CMD_VIA_MACRO_GET_COUNT, \
-    CMD_VIA_MACRO_GET_BUFFER_SIZE, \
-    CMD_VIA_KEYMAP_GET_BUFFER, CMD_VIA_MACRO_GET_BUFFER, CMD_VIAL_GET_UNLOCK_STATUS, \
+from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_LAYER_COUNT, \
+    CMD_VIA_MACRO_GET_COUNT, CMD_VIA_MACRO_GET_BUFFER_SIZE, \
+    CMD_VIA_KEYMAP_GET_BUFFER, CMD_VIA_MACRO_GET_BUFFER, \
     CMD_VIA_SET_KEYCODE, VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO, \
     VIABLE_COMBO_GET, VIABLE_COMBO_SET, VIABLE_TAP_DANCE_GET, VIABLE_TAP_DANCE_SET, \
     VIABLE_KEY_OVERRIDE_GET, VIABLE_KEY_OVERRIDE_SET, \
@@ -250,23 +249,9 @@ class VirtualKeyboard:
             return struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_QUERY, 0xFFFF)
         raise RuntimeError("unsupported viable submsg 0x{:02X}".format(msg[1]))
 
-    def vial_cmd(self, msg):
-        if msg[1] == CMD_VIAL_GET_KEYBOARD_ID:
-            return struct.pack("<IQ", 6, 0xF00DFACEDEADBEEF)
-        elif msg[1] == CMD_VIAL_GET_SIZE:
-            return struct.pack("<I", len(self.keyboard_definition))
-        elif msg[1] == CMD_VIAL_GET_DEFINITION:
-            page = struct.unpack_from("<H", msg[2:])[0]
-            return self.keyboard_definition[page*32:(page+1)*32]
-        elif msg[1] == CMD_VIAL_GET_UNLOCK_STATUS:
-            return struct.pack("<BB", 0, 0)  # TODO we want to test unlocking as well
-        raise RuntimeError("unknown command for Vial protocol 0x{:02X}".format(msg[1]))
-
     def process(self, msg):
         if msg[0] == VIABLE_PREFIX:
             return self.viable_cmd(msg)
-        elif msg[0] == CMD_VIA_VIAL_PREFIX:
-            return self.vial_cmd(msg)
         elif msg[0] == CMD_VIA_GET_PROTOCOL_VERSION:
             return struct.pack(">BH", msg[0], 12)
         elif msg[0] == CMD_VIA_SET_KEYCODE:
@@ -343,7 +328,7 @@ def cleanup_threads():
 
 
 def prepare(qtbot, keyboard_json, combos=None, tap_dance=None):
-    import hidraw as hid
+    import hid
 
     vk = VirtualKeyboard(keyboard_json, combos=combos, tap_dance=tap_dance)
     MockDevice.vk = vk

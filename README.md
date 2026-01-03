@@ -1,37 +1,35 @@
-### vial-gui
+### Viable
 
-# Docs and getting started
+Viable is a fork of [Vial](https://get.vial.today/), an open-source cross-platform (Windows, Linux and Mac) GUI for configuring your keyboard in real time.
 
-### Please visit [get.vial.today](https://get.vial.today/) to get started with Vial
+# Getting started
 
-Vial is an open-source cross-platform (Windows, Linux and Mac) GUI and a QMK fork for configuring your keyboard in real time.
+Download the latest release from the [Releases](https://github.com/viable-kb/gui/releases) page.
 
+For Linux udev rules, follow the instructions at [get.vial.today/manual/linux-udev.html](https://get.vial.today/manual/linux-udev.html).
 
-![](https://get.vial.today/img/vial-win-1.png)
+# Development
 
-
----
-
-
-#### Releases
-
-Visit https://get.vial.today/ to download a binary release of Vial.
-
-#### Development
-
-Python 3.6 is recommended (3.6 is the latest version that is officially supported by `fbs`).
+Python 3.12+ recommended.
 
 Install dependencies:
 
 ```
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-test.txt
 ```
 
-To launch the application afterwards:
+To launch the application:
 
 ```
 source venv/bin/activate
-fbs run
+export PYTHONPATH="src/main/python:$PYTHONPATH"
+python src/main/python/main.py
+```
+
+To run tests:
+
+```
+pytest src/main/python/test/ -v
 ```

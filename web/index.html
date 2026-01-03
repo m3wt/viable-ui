@@ -1,5 +1,5 @@
 <head>
-    <title>Vial Web</title>
+    <title>Viable Web</title>
     <link rel="icon" href="/icon.png" type="image/png">
     <style>
         body {
@@ -81,7 +81,7 @@
 
     <div id="startup">
         <div id="startup_inner">
-            <input id="startup_btn" type="button" onclick="connect()" value="Start Vial" disabled="true" /><br>
+            <input id="startup_btn" type="button" onclick="connect()" value="Start Viable" disabled="true" /><br>
             <div id="error" style="display:none">
                 <p id="error_msg"></p>
                 <p>You can check web browser support at <a href="https://caniuse.com/webhid"
@@ -166,10 +166,6 @@
                     description: "Vial layout",
                     accept: { "application/json": [".vil"] },
                 },
-                {
-                    description: "Svalboard profile",
-                    accept: { "application/json": [".svil"] },
-                },
             ],
             excludeAcceptAllOption: false,
             multiple: false,
@@ -181,97 +177,54 @@
                 return;
             }
 
-            const [handle] = await window.showOpenFilePicker(FILE_OPTIONS);
+            try {
+                const [handle] = await window.showOpenFilePicker(FILE_OPTIONS);
 
-            if (!handle) {
-                return;
+                if (!handle) {
+                    return;
+                }
+
+                const file = await handle.getFile();
+                const layout = await file.text();
+
+                PThread.runningWorkers[0].postMessage({
+                    cmd: "py",
+                    payload: `import webmain;webmain.window.on_layout_loaded(b${JSON.stringify(layout)})`,
+                });
+            } catch (e) {
+                if (e.name === 'AbortError') return;  // User canceled
+                throw e;
             }
-
-            const file = await handle.getFile();
-            const layout = await file.text();
-
-            PThread.runningWorkers[0].postMessage({
-                cmd: "py",
-                payload: `import webmain;webmain.window.on_layout_loaded(b${JSON.stringify(layout)})`,
-            });
         }
 
         async function saveLayout(layout) {
-            if (window.showSaveFilePicker) {
-                // This shows a file chooser dialog. It's a nicer experience
-                // if available, allowing the user to select a target
-                // filename and directory.
-                const handle = await window.showSaveFilePicker(FILE_OPTIONS);
-                const stream = await handle.createWritable();
-                await stream.write(layout);
-                await stream.close();
-            } else {
-                // If the File System API isn't available, we can at least
-                // trigger a simple download with a hardcoded filename.
-                const download = document.createElement('a');
-                download.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(layout));
-                download.setAttribute('download', 'layout.vil');
-
-                if (document.createEvent) {
-                    var event = document.createEvent('MouseEvents');
-                    event.initEvent('click', true, true);
-                    download.dispatchEvent(event);
+            try {
+                if (window.showSaveFilePicker) {
+                    // This shows a file chooser dialog. It's a nicer experience
+                    // if available, allowing the user to select a target
+                    // filename and directory.
+                    const handle = await window.showSaveFilePicker(FILE_OPTIONS);
+                    const stream = await handle.createWritable();
+                    await stream.write(layout);
+                    await stream.close();
                 } else {
-                    download.click();
+                    // If the File System API isn't available, we can at least
+                    // trigger a simple download with a hardcoded filename.
+                    const download = document.createElement('a');
+                    download.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(layout));
+                    download.setAttribute('download', 'layout.viable');
+
+                    if (document.createEvent) {
+                        var event = document.createEvent('MouseEvents');
+                        event.initEvent('click', true, true);
+                        download.dispatchEvent(event);
+                    } else {
+                        download.click();
+                    }
                 }
-            }
-        }
-
-        const SVIL_FILE_OPTIONS = {
-            types: [
-                {
-                    description: "Svalboard profile",
-                    accept: { "application/json": [".svil"] },
-                },
-            ],
-            excludeAcceptAllOption: false,
-            multiple: false,
-        };
-
-        async function loadSvalboardProfile() {
-            if (!window.showOpenFilePicker) {
-                alert("File loading API unavailable. Please use a newer browser.");
-                return;
-            }
-
-            const [handle] = await window.showOpenFilePicker(SVIL_FILE_OPTIONS);
-
-            if (!handle) {
-                return;
-            }
-
-            const file = await handle.getFile();
-            const layout = await file.text();
-
-            PThread.runningWorkers[0].postMessage({
-                cmd: "py",
-                payload: `import webmain;webmain.window.on_layout_loaded(b${JSON.stringify(layout)})`,
-            });
-        }
-
-        async function saveSvalboardProfile(layout) {
-            if (window.showSaveFilePicker) {
-                const handle = await window.showSaveFilePicker(SVIL_FILE_OPTIONS);
-                const stream = await handle.createWritable();
-                await stream.write(layout);
-                await stream.close();
-            } else {
-                const download = document.createElement('a');
-                download.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(layout));
-                download.setAttribute('download', 'profile.svil');
-
-                if (document.createEvent) {
-                    var event = document.createEvent('MouseEvents');
-                    event.initEvent('click', true, true);
-                    download.dispatchEvent(event);
-                } else {
-                    download.click();
-                }
+            } catch (e) {
+                if (e.name === 'AbortError') return;  // User canceled
+                throw e;
             }
         }
 
@@ -280,9 +233,12 @@
 
             btn.disabled = true;
             btn.value = "Requesting device list...";
-            devices = await navigator.hid.requestDevice({ filters: [{ usagePage: 0xFF60, usage: 0x61 }] });
+            devices = await navigator.hid.requestDevice({ filters: [
+                { usagePage: 0xFF60, usage: 0x61 },  // VIA
+                { usagePage: 0xFF61, usage: 0x62 }   // Viable
+            ] });
             if (devices.length != 1) {
-                btn.value = "Start Vial";
+                btn.value = "Start Viable";
                 btn.disabled = false;
                 return;
             }
@@ -299,6 +255,13 @@
             }
 
             g_device = devices[0];
+            // Get usage page/usage from device collections (defaults to VIA if not found)
+            var usagePage = 0xFF60;
+            var usage = 0x61;
+            if (g_device.collections && g_device.collections.length > 0) {
+                usagePage = g_device.collections[0].usagePage;
+                usage = g_device.collections[0].usage;
+            }
             var device_desc = {
                 path: "/webhid",
                 vendor_id: g_device.vendorId,
@@ -307,8 +270,8 @@
                 release_number: 1,
                 manufacturer_string: "",
                 product_string: g_device.productName,
-                usage_page: 65376,
-                usage: 97,
+                usage_page: usagePage,
+                usage: usage,
                 interface_number: 1
             };
             _vialglue_set_device_desc(allocateUTF8(JSON.stringify(device_desc)));

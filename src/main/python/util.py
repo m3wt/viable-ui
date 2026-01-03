@@ -16,7 +16,7 @@ from keymaps import KEYMAPS
 
 tr = QCoreApplication.translate
 
-# For Viable keyboard (web detection - sideload bypasses this)
+# Serial number magic string for device detection
 VIABLE_SERIAL_NUMBER_MAGIC = "viable:"
 
 # VIA protocol version 12 = VIA3 (supports custom menus)
@@ -111,8 +111,14 @@ def is_via3_device(desc, quiet=False):
     """Check if a device supports VIA protocol version 3 (protocol >= 12)"""
     import struct
 
-    # Only check devices with VIA's usage page/id
-    if desc["usage_page"] != 0xFF60 or desc["usage"] != 0x61:
+    # Skip probing on web platform - device is handled differently there
+    if sys.platform == "emscripten":
+        return False
+
+    # Check for VIA (0xFF60/0x61) or Viable (0xFF61/0x62) usage page/id
+    is_via = desc["usage_page"] == 0xFF60 and desc["usage"] == 0x61
+    is_viable = desc["usage_page"] == 0xFF61 and desc["usage"] == 0x62
+    if not (is_via or is_viable):
         return False
 
     dev = hid.device()
