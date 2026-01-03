@@ -33,24 +33,18 @@ class ProtocolSvalboard(BaseProtocol):
     sval_turbo_scan_limit = 10
 
     def reload_svalboard(self):
-        """Check if svalboard (from JSON menus) and load settings via VIA protocol"""
+        """Check if svalboard (from JSON name) and load settings via VIA protocol"""
         self.is_svalboard = False
         self.sval_layer_count = 0
         self.sval_layer_colors = None
         self.sval_settings = None
 
-        # Detect Svalboard from keyboard definition menus
+        # Detect Svalboard from keyboard definition name
         if not hasattr(self, 'definition') or not self.definition:
             return
 
-        menus = self.definition.get('menus', [])
-        has_layer_colors = False
-        for menu in menus:
-            if menu.get('label') == 'Layer Colors':
-                has_layer_colors = True
-                break
-
-        if not has_layer_colors:
+        name = self.definition.get('name', '')
+        if not name.lower().startswith('svalboard'):
             return
 
         self.is_svalboard = True

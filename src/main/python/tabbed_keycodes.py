@@ -945,7 +945,7 @@ class FilteredTabbedKeycodes(QWidget):
             SectionedTab(self, "Layers", get_layer_keycodes_by_section),
             HeaderedSectionedTab(self, "One Shot", get_modifier_keycodes_by_section),
             HeaderedSectionedTab(self, "App, Media and Mouse", get_media_keycodes_by_section),
-            SimpleTab(self, "User", KEYCODES_USER),  # Renamed to "Svalboard" when Svalboard connected
+            SimpleTab(self, "User", KEYCODES_USER),
             SimpleTab(self, "Backlight", KEYCODES_BACKLIGHT),
             SimpleTab(self, "Tap Dance", KEYCODES_TAP_DANCE),
             SimpleTab(self, "Macro", KEYCODES_MACRO),
@@ -1004,7 +1004,6 @@ class FilteredTabbedKeycodes(QWidget):
         for i, tab in enumerate(self.tabs):
             if tab.label == "User" or tab.label == "Svalboard":
                 tab.label = label
-                # Update the visible tab text if it's currently shown
                 for tab_idx in range(self.tab_widget.count()):
                     if self.tab_widget.widget(tab_idx) == tab:
                         self.tab_widget.setTabText(tab_idx, tr("TabbedKeycodes", label))
@@ -1086,9 +1085,3 @@ class TabbedKeycodes(QWidget):
         for opt in [self.all_keycodes, self.basic_keycodes]:
             opt.set_user_tab_label(label)
 
-    @classmethod
-    def update_user_tab_label(cls, is_svalboard):
-        """Class method to update the User tab label for the tray and all instances"""
-        label = "Svalboard" if is_svalboard else "User"
-        if hasattr(cls, 'tray') and cls.tray:
-            cls.tray.set_user_tab_label(label)

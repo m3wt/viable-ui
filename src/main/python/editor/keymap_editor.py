@@ -191,10 +191,10 @@ class KeymapEditor(BasicEditor):
             TabbedKeycodes.tray.recreate_keycode_buttons()
             self.refresh_layer_display()
 
-            # Update User tab label based on whether Svalboard is connected
             is_svalboard = getattr(self.keyboard, 'is_svalboard', False)
             label = "Svalboard" if is_svalboard else "User"
             self.tabbed_keycodes.set_user_tab_label(label)
+            TabbedKeycodes.tray.set_user_tab_label(label)
 
             # Configure serial assignment dropdown
             self.container._matrix_cols = self.keyboard.cols

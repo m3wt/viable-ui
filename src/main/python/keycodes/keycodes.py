@@ -1117,15 +1117,15 @@ def create_custom_user_keycodes(custom_keycodes):
                 alias=[c_keycode.get("name", "USER{:02}".format(x))]
             )
         )
-    # Always create at least 64 user keycodes for compatibility
+    # Create hidden keycodes for remaining slots (for decoding, not shown in UI)
     for x in range(len(custom_keycodes), 64):
-        KEYCODES_USER.append(
-            Keycode(
-                "USER{:02}".format(x),
-                "USER{:02}".format(x),
-                "User keycode {}".format(x)
-            )
+        kc = Keycode(
+            "USER{:02}".format(x),
+            "USER{:02}".format(x),
+            "User keycode {}".format(x)
         )
+        kc.hidden = True
+        KEYCODES_USER.append(kc)
 
 
 def create_macro_keycodes(count=128):
