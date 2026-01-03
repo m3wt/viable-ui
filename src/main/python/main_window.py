@@ -178,10 +178,12 @@ class MainWindow(QMainWindow):
 
         # Initial device discovery handled by autorefresh thread
         # Don't call on_click_refresh() here - it causes duplicate opens
-
+        # Exception: on web (emscripten) the autorefresh thread is disabled,
+        # so we need to trigger discovery after WebHID is ready
         if sys.platform == "emscripten":
             import vialglue
             QTimer.singleShot(100, vialglue.notify_ready)
+            QTimer.singleShot(200, self.on_click_refresh)
 
     def init_menu(self):
         layout_load_act = QAction(tr("MenuFile", "Load saved layout..."), self)
