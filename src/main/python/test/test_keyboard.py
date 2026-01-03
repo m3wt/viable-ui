@@ -37,6 +37,84 @@ class SimulatedDevice:
         self.expect_data = []
         # current index in communications
         self.expect_idx = 0
+        # For write/read interface
+        self._pending_response = None
+        # Client ID counter for bootstrap
+        self._next_client_id = 0x12340001
+
+    def write(self, data):
+        """HID write - handles bootstrap and regular messages"""
+        # Strip leading 0x00 report ID if present
+        if data[0] == 0:
+            data = data[1:]
+
+        # Handle bootstrap (0xDD with client_id 0x00000000)
+        if len(data) >= 5 and data[0] == 0xDD:
+            client_id = struct.unpack("<I", data[1:5])[0]
+            if client_id == 0:
+                # Bootstrap request: [0xDD] [0x00000000] [nonce:20]
+                # Response: [0xDD] [0x00000000] [nonce:20] [new_client_id:4] [ttl:2]
+                nonce = data[5:25]
+                new_id = self._next_client_id
+                self._next_client_id += 1
+                response = bytes([0xDD]) + struct.pack("<I", 0) + nonce
+                response += struct.pack("<IH", new_id, 120)  # client_id, TTL
+                response += b"\x00" * (MSG_LEN - len(response))
+                self._pending_response = response
+                return len(data) + 1
+            else:
+                # Wrapped command - unwrap and process
+                protocol = data[5]
+                if protocol == 0xDF:  # Viable
+                    inner = data[5:]
+                    inner_response = self._process_inner(inner)
+                    # Wrap response
+                    response = bytes([0xDD]) + struct.pack("<I", client_id) + inner_response
+                    response = response[:MSG_LEN]
+                    response += b"\x00" * (MSG_LEN - len(response))
+                    self._pending_response = response
+                    return len(data) + 1
+                elif protocol == 0xFE:  # VIA
+                    inner = data[6:]
+                    inner_response = self._process_inner(inner)
+                    # Wrap response
+                    response = bytes([0xDD]) + struct.pack("<I", client_id) + bytes([0xFE]) + inner_response
+                    response = response[:MSG_LEN]
+                    response += b"\x00" * (MSG_LEN - len(response))
+                    self._pending_response = response
+                    return len(data) + 1
+
+        # Non-wrapped (legacy) - process directly
+        response = self._process_inner(data)
+        self._pending_response = response
+        return len(data) + 1
+
+    def _process_inner(self, data):
+        """Process inner command using expect_data"""
+        if self.expect_idx >= len(self.expect_data):
+            raise Exception("Trying to communicate more times ({}) than expected ({}); got data={}".format(
+                self.expect_idx + 1,
+                len(self.expect_data),
+                data.hex()
+            ))
+        inp, out = self.expect_data[self.expect_idx]
+        # Allow partial match for wrapped commands
+        if not data.startswith(inp) and data != inp:
+            raise Exception("Got unexpected data at index {}: expected={} got={}".format(
+                self.expect_idx,
+                inp.hex(),
+                data.hex()
+            ))
+        self.expect_idx += 1
+        return out
+
+    def read(self, length, timeout_ms=0):
+        """HID read - returns pending response"""
+        if self._pending_response is None:
+            return []
+        response = self._pending_response
+        self._pending_response = None
+        return list(response[:length])
 
     def expect(self, inp, out):
         if isinstance(inp, str):

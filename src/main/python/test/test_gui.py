@@ -287,6 +287,8 @@ class VirtualKeyboard:
 
 
 class MockDevice:
+    # Client ID counter for bootstrap
+    _next_client_id = 0x12340001
 
     def open_path(self, path):
         assert path == "/magic/path/for/tests"
@@ -303,7 +305,43 @@ class MockDevice:
 
     def read(self, sz, timeout_ms=None):
         assert sz == 32
-        resp = self.vk.process(self.msg)
+        msg = self.msg
+
+        # Handle wrapper protocol (0xDD)
+        if msg[0] == 0xDD:
+            client_id = struct.unpack("<I", msg[1:5])[0]
+            if client_id == 0:
+                # Bootstrap request: [0xDD] [0x00000000] [nonce:20]
+                # Response: [0xDD] [0x00000000] [nonce:20] [new_client_id:4] [ttl:2]
+                nonce = msg[5:25]
+                new_id = MockDevice._next_client_id
+                MockDevice._next_client_id += 1
+                resp = bytes([0xDD]) + struct.pack("<I", 0) + nonce
+                resp += struct.pack("<IH", new_id, 120)  # client_id, TTL
+                resp += b"\x00" * (32 - len(resp))
+                return resp
+            else:
+                # Wrapped command
+                protocol = msg[5]
+                if protocol == 0xDF:  # Viable
+                    inner = msg[5:]
+                    inner_resp = self.vk.process(inner)
+                    # Wrap response
+                    resp = bytes([0xDD]) + struct.pack("<I", client_id) + inner_resp
+                    resp = resp[:32]
+                    resp += b"\x00" * (32 - len(resp))
+                    return resp
+                elif protocol == 0xFE:  # VIA
+                    inner = msg[6:]
+                    inner_resp = self.vk.process(inner)
+                    # Wrap response
+                    resp = bytes([0xDD]) + struct.pack("<I", client_id) + bytes([0xFE]) + inner_resp
+                    resp = resp[:32]
+                    resp += b"\x00" * (32 - len(resp))
+                    return resp
+
+        # Non-wrapped (legacy)
+        resp = self.vk.process(msg)
         assert len(resp) <= 32
         resp += b"\x00" * (32 - len(resp))
         return resp
@@ -343,10 +381,6 @@ def prepare(qtbot, keyboard_json, combos=None, tap_dance=None):
 
     mw = MainWindow(FakeAppctx())
 
-    # Enable auto_commit so keycode changes are immediately sent to the device
-    # This matches the old behavior before ChangeManager integration
-    ChangeManager.instance().auto_commit = True
-
     # Patch closeEvent to clear ChangeManager before checking for pending changes
     # This prevents the "unsaved changes" dialog from appearing during test cleanup
     original_close_event = mw.closeEvent
@@ -366,6 +400,12 @@ def prepare(qtbot, keyboard_json, combos=None, tap_dance=None):
     # keep reference to MainWindow for the duration of tests
     # when MainWindow goes out of scope some KeyWidgets are still registered within KeycodeDisplay which causes UaF
     all_mw.append(mw)
+
+    # Trigger device discovery (autorefresh thread may not have run yet)
+    mw.on_click_refresh()
+
+    # Enable auto_commit AFTER device is discovered (auto_commit is per-keyboard)
+    ChangeManager.instance().auto_commit = True
 
     return mw, vk
 
