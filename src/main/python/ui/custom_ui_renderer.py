@@ -557,8 +557,6 @@ class CustomUIRenderer(QObject):
         # Fetch from keyboard and cache
         try:
             data = self.keyboard.custom_value_get(channel, value_id)
-            import logging
-            logging.info(f"custom_value_get({channel}, {value_id}) = {data.hex() if data else 'None'}")
             # Cache the result
             if not hasattr(self.keyboard, 'custom_values'):
                 self.keyboard.custom_values = {}

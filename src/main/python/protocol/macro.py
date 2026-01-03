@@ -6,7 +6,7 @@ from macro.macro_action import SS_TAP_CODE, SS_DOWN_CODE, SS_UP_CODE, ActionText
 from macro.macro_action_ui import tag_to_action
 from protocol.base_protocol import BaseProtocol
 from protocol.constants import CMD_VIA_MACRO_GET_COUNT, CMD_VIA_MACRO_GET_BUFFER_SIZE, CMD_VIA_MACRO_GET_BUFFER, \
-    CMD_VIA_MACRO_SET_BUFFER, BUFFER_FETCH_CHUNK, VIAL_PROTOCOL_ADVANCED_MACROS
+    CMD_VIA_MACRO_SET_BUFFER, VIA_BUFFER_CHUNK_SIZE, VIAL_PROTOCOL_ADVANCED_MACROS
 from unlocker import Unlocker
 from util import chunks
 
@@ -139,19 +139,19 @@ class ProtocolMacro(BaseProtocol):
 
     def reload_macros_early(self):
         """ Reload macro information that doesn't require any info about keycodes, i.e. number of macros """
-        data = self.usb_send(self.dev, struct.pack("B", CMD_VIA_MACRO_GET_COUNT), retries=20)
+        data = self.via_send(struct.pack("B", CMD_VIA_MACRO_GET_COUNT), retries=20)
         self.macro_count = data[1]
-        data = self.usb_send(self.dev, struct.pack("B", CMD_VIA_MACRO_GET_BUFFER_SIZE), retries=20)
+        data = self.via_send(struct.pack("B", CMD_VIA_MACRO_GET_BUFFER_SIZE), retries=20)
         self.macro_memory = struct.unpack(">H", data[1:3])[0]
 
     def reload_macros_late(self):
         """ Load actual keycodes """
         self.macro = b""
         if self.macro_memory:
-            # now retrieve the entire buffer, MACRO_CHUNK bytes at a time, as that is what fits into a packet
-            for x in range(0, self.macro_memory, BUFFER_FETCH_CHUNK):
-                sz = min(BUFFER_FETCH_CHUNK, self.macro_memory - x)
-                data = self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_MACRO_GET_BUFFER, x, sz), retries=20)
+            # now retrieve the entire buffer, chunk bytes at a time, as that is what fits into a packet
+            for x in range(0, self.macro_memory, VIA_BUFFER_CHUNK_SIZE):
+                sz = min(VIA_BUFFER_CHUNK_SIZE, self.macro_memory - x)
+                data = self.via_send(struct.pack(">BHB", CMD_VIA_MACRO_GET_BUFFER, x, sz), retries=20)
                 self.macro += data[4:4 + sz]
                 if self.macro.count(b"\x00") > self.macro_count:
                     break
@@ -177,12 +177,12 @@ class ProtocolMacro(BaseProtocol):
         if len(old_data) < len(data):
             old_data = old_data + b'\x00' * (len(data) - len(old_data))
 
-        for x, chunk in enumerate(chunks(data, BUFFER_FETCH_CHUNK)):
-            off = x * BUFFER_FETCH_CHUNK
+        for x, chunk in enumerate(chunks(data, VIA_BUFFER_CHUNK_SIZE)):
+            off = x * VIA_BUFFER_CHUNK_SIZE
             # Compare with corresponding chunk in old data
             old_chunk = old_data[off:off + len(chunk)]
             if chunk != old_chunk:
-                self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
+                self.via_send(struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
                               retries=20)
         self.macro = data
 
@@ -201,12 +201,12 @@ class ProtocolMacro(BaseProtocol):
         if len(old_data) < len(data):
             old_data = old_data + b'\x00' * (len(data) - len(old_data))
 
-        for x, chunk in enumerate(chunks(data, BUFFER_FETCH_CHUNK)):
-            off = x * BUFFER_FETCH_CHUNK
+        for x, chunk in enumerate(chunks(data, VIA_BUFFER_CHUNK_SIZE)):
+            off = x * VIA_BUFFER_CHUNK_SIZE
             # Compare with corresponding chunk in committed data
             old_chunk = old_data[off:off + len(chunk)]
             if chunk != old_chunk:
-                self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
+                self.via_send(struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
                               retries=20)
         self.macro = data
         self._committed_macro = data  # Update committed state after successful push

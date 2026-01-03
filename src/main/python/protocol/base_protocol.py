@@ -1,25 +1,27 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 import struct
 
-from protocol.constants import VIABLE_PREFIX
-
 
 class BaseProtocol:
     viable_protocol = None  # Version of Viable 0xDF protocol, or None if not supported
     usb_send = NotImplemented
+    wrapper = None  # ClientWrapper instance for protocol commands
     dev = None
 
     macro_count = 0
     macro_memory = 0
     macro = b""
 
+    def via_send(self, msg, retries=20):
+        """Send a VIA command through the wrapper for client ID isolation."""
+        return self.wrapper.send_via(msg, retries=retries)
+
     def _retrieve_dynamic_entries(self, cmd, count, fmt):
-        """Retrieve entries using Viable 0xDF protocol."""
+        """Retrieve entries using Viable 0xDF protocol via client wrapper."""
         out = []
         for x in range(count):
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BBB", VIABLE_PREFIX, cmd, x),
+            data = self.wrapper.send_viable(
+                struct.pack("BB", cmd, x),
                 retries=20
             )
             # Response: [0xDF] [cmd] [index] [entry data...]

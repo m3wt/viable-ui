@@ -3,7 +3,7 @@ import struct
 
 from keycodes.keycodes import Keycode, RESET_KEYCODE
 from protocol.base_protocol import BaseProtocol
-from protocol.constants import VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_GET, VIABLE_ALT_REPEAT_KEY_SET
+from protocol.constants import VIABLE_ALT_REPEAT_KEY_GET, VIABLE_ALT_REPEAT_KEY_SET
 from unlocker import Unlocker
 
 
@@ -85,16 +85,16 @@ class ProtocolAltRepeatKey(BaseProtocol):
                 Unlocker.unlock(self)
 
             self.alt_repeat_key_entries[idx] = entry
-            self.usb_send(self.dev, struct.pack("BBB", VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_SET, idx)
-                          + entry.serialize())
+            self.wrapper.send_viable(struct.pack("BB", VIABLE_ALT_REPEAT_KEY_SET, idx)
+                                     + entry.serialize(), retries=20)
 
     def _commit_alt_repeat_key(self, idx, entry):
         """Send an alt repeat key change to the device (used by ChangeManager)."""
         if entry.keycode == RESET_KEYCODE or entry.alt_keycode == RESET_KEYCODE:
             Unlocker.unlock(self)
         self.alt_repeat_key_entries[idx] = entry
-        self.usb_send(self.dev, struct.pack("BBB", VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_SET, idx)
-                      + entry.serialize())
+        self.wrapper.send_viable(struct.pack("BB", VIABLE_ALT_REPEAT_KEY_SET, idx)
+                                 + entry.serialize(), retries=20)
         return True
 
     def save_alt_repeat_key(self):

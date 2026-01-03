@@ -67,8 +67,7 @@ class ProtocolSvalboard(BaseProtocol):
         """
         # VIA custom value format: [command, channel, value_id]
         # Channel 0 = keyboard-level custom values
-        data = self.usb_send(
-            self.dev,
+        data = self.via_send(
             struct.pack("BBB", CMD_VIA_CUSTOM_GET_VALUE, 0, value_id),
             retries=20
         )
@@ -82,7 +81,7 @@ class ProtocolSvalboard(BaseProtocol):
         # VIA custom value format: [command, channel, value_id, value_data...]
         # Channel 0 = keyboard-level custom values
         msg = struct.pack("BBB", CMD_VIA_CUSTOM_SET_VALUE, 0, value_id) + bytes(values)
-        self.usb_send(self.dev, msg, retries=20)
+        self.via_send(msg, retries=20)
 
     def _load_layer_colors(self):
         """Load all layer colors via VIA custom values"""

@@ -15,6 +15,15 @@ from app_context import cached_property, ApplicationContext
 
 import sys
 
+# Enable non-exclusive HID access on macOS so multiple apps can share a device
+if sys.platform == "darwin":
+    try:
+        import hid
+        if hasattr(hid, 'darwin_set_open_exclusive'):
+            hid.darwin_set_open_exclusive(False)
+    except (ImportError, AttributeError):
+        pass  # Old hidapi version or not available
+
 
 # http://timlehr.com/python-exception-hooks-with-qt-message-box/
 from util import init_logger

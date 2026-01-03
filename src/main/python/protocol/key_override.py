@@ -15,11 +15,7 @@ import struct
 
 from keycodes.keycodes import Keycode, RESET_KEYCODE
 from protocol.base_protocol import BaseProtocol
-from protocol.constants import (
-    VIABLE_PREFIX,
-    VIABLE_KEY_OVERRIDE_GET,
-    VIABLE_KEY_OVERRIDE_SET,
-)
+from protocol.constants import VIABLE_KEY_OVERRIDE_GET, VIABLE_KEY_OVERRIDE_SET
 from unlocker import Unlocker
 
 
@@ -126,9 +122,8 @@ class ProtocolKeyOverride(BaseProtocol):
         """Load all key override entries from keyboard using Viable protocol."""
         self.key_override_entries = []
         for idx in range(self.key_override_count):
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BBB", VIABLE_PREFIX, VIABLE_KEY_OVERRIDE_GET, idx),
+            data = self.wrapper.send_viable(
+                struct.pack("BB", VIABLE_KEY_OVERRIDE_GET, idx),
                 retries=20
             )
             # Response: [0xDF] [0x05] [index] [12 bytes of key_override_entry]
@@ -156,9 +151,8 @@ class ProtocolKeyOverride(BaseProtocol):
         if entry.replacement == RESET_KEYCODE:
             Unlocker.unlock(self)
         self.key_override_entries[idx] = entry
-        self.usb_send(
-            self.dev,
-            struct.pack("BBB", VIABLE_PREFIX, VIABLE_KEY_OVERRIDE_SET, idx) + entry.serialize(),
+        self.wrapper.send_viable(
+            struct.pack("BB", VIABLE_KEY_OVERRIDE_SET, idx) + entry.serialize(),
             retries=20
         )
 
@@ -167,9 +161,8 @@ class ProtocolKeyOverride(BaseProtocol):
         if entry.replacement == RESET_KEYCODE:
             Unlocker.unlock(self)
         self.key_override_entries[idx] = entry
-        self.usb_send(
-            self.dev,
-            struct.pack("BBB", VIABLE_PREFIX, VIABLE_KEY_OVERRIDE_SET, idx) + entry.serialize(),
+        self.wrapper.send_viable(
+            struct.pack("BB", VIABLE_KEY_OVERRIDE_SET, idx) + entry.serialize(),
             retries=20
         )
         return True

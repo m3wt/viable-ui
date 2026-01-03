@@ -3,7 +3,7 @@ import struct
 
 from protocol.base_protocol import BaseProtocol
 from protocol.constants import (
-    VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO,
+    VIABLE_GET_PROTOCOL_INFO,
     VIABLE_FLAG_CAPS_WORD, VIABLE_FLAG_LAYER_LOCK, VIABLE_FLAG_ONESHOT
 )
 
@@ -28,7 +28,7 @@ class ProtocolDynamic(BaseProtocol):
         # Get protocol info from Viable 0xDF (v2)
         # Request: [0xDF] [0x00]
         # Response: [0xDF] [0x00] [ver0-3] [td_count] [combo_count] [ko_count] [ark_count] [flags]
-        data = self.usb_send(self.dev, struct.pack("BB", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO), retries=20)
+        data = self.wrapper.send_viable(struct.pack("B", VIABLE_GET_PROTOCOL_INFO), retries=20)
 
         # Parse version (4 bytes little-endian starting at offset 2)
         self.viable_version = struct.unpack("<I", bytes(data[2:6]))[0]

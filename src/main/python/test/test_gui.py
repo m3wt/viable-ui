@@ -20,7 +20,7 @@ from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_LAYER_C
     VIABLE_KEY_OVERRIDE_GET, VIABLE_KEY_OVERRIDE_SET, \
     VIABLE_ALT_REPEAT_KEY_GET, VIABLE_ALT_REPEAT_KEY_SET, \
     VIABLE_ONESHOT_GET, VIABLE_ONESHOT_SET, \
-    VIABLE_DEFINITION_SIZE, VIABLE_DEFINITION_CHUNK, BUFFER_FETCH_CHUNK, \
+    VIABLE_DEFINITION_SIZE, VIABLE_DEFINITION_CHUNK, VIABLE_DEFINITION_CHUNK_SIZE, \
     VIABLE_QMK_SETTINGS_QUERY, \
     CMD_VIA_CUSTOM_SET_VALUE, CMD_VIA_CUSTOM_GET_VALUE, CMD_VIA_CUSTOM_SAVE
 from widgets.square_button import SquareButton
@@ -239,11 +239,13 @@ class VirtualKeyboard:
             return struct.pack("<BBI", VIABLE_PREFIX, VIABLE_DEFINITION_SIZE,
                                len(self.keyboard_definition))
         elif msg[1] == VIABLE_DEFINITION_CHUNK:
-            # Request: [0xDF] [0x0E] [offset 2 bytes little-endian]
+            # Request: [0xDF] [0x0E] [offset:2] [size:1]
             offset = struct.unpack_from("<H", msg[2:])[0]
-            chunk = self.keyboard_definition[offset:offset + BUFFER_FETCH_CHUNK]
-            # Response: [0xDF] [0x0E] [offset 2 bytes] [chunk data]
-            return struct.pack("<BBH", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset) + chunk
+            requested_size = msg[4] if len(msg) > 4 else VIABLE_DEFINITION_CHUNK_SIZE
+            chunk = self.keyboard_definition[offset:offset + requested_size]
+            actual_size = len(chunk)
+            # Response: [0xDF] [0x0E] [offset:2] [actual_size:1] [data...]
+            return struct.pack("<BBHB", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset, actual_size) + chunk
         elif msg[1] == VIABLE_QMK_SETTINGS_QUERY:
             # Return 0xFFFF to indicate no QMK settings supported
             return struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_QUERY, 0xFFFF)

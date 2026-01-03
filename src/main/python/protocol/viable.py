@@ -10,7 +10,7 @@ import struct
 
 from protocol.base_protocol import BaseProtocol
 from protocol.constants import (
-    VIABLE_PREFIX, VIABLE_ONESHOT_GET, VIABLE_ONESHOT_SET,
+    VIABLE_ONESHOT_GET, VIABLE_ONESHOT_SET,
     VIABLE_SAVE, VIABLE_RESET
 )
 
@@ -26,9 +26,8 @@ class ProtocolViable(BaseProtocol):
 
         Returns tuple: (timeout_ms, tap_toggle)
         """
-        response = self.usb_send(
-            self.dev,
-            struct.pack("BB", VIABLE_PREFIX, VIABLE_ONESHOT_GET),
+        response = self.wrapper.send_viable(
+            struct.pack("B", VIABLE_ONESHOT_GET),
             retries=20
         )
         # Response: [0xDF] [0x09] [timeout_lo] [timeout_hi] [tap_toggle]
@@ -38,9 +37,8 @@ class ProtocolViable(BaseProtocol):
     def oneshot_set(self, timeout, tap_toggle):
         """Set one-shot settings."""
         data = struct.pack("<HB", timeout, tap_toggle)
-        self.usb_send(
-            self.dev,
-            struct.pack("BB", VIABLE_PREFIX, VIABLE_ONESHOT_SET) + data,
+        self.wrapper.send_viable(
+            struct.pack("B", VIABLE_ONESHOT_SET) + data,
             retries=20
         )
 
@@ -67,9 +65,8 @@ class ProtocolViable(BaseProtocol):
 
     def viable_save(self):
         """Explicitly save all Viable data to EEPROM."""
-        self.usb_send(
-            self.dev,
-            struct.pack("BB", VIABLE_PREFIX, VIABLE_SAVE),
+        self.wrapper.send_viable(
+            struct.pack("B", VIABLE_SAVE),
             retries=20
         )
 
@@ -78,9 +75,8 @@ class ProtocolViable(BaseProtocol):
         Reset all dynamic features to defaults.
         Clears all tap dances, combos, key overrides, and alt repeat keys.
         """
-        self.usb_send(
-            self.dev,
-            struct.pack("BB", VIABLE_PREFIX, VIABLE_RESET),
+        self.wrapper.send_viable(
+            struct.pack("B", VIABLE_RESET),
             retries=20
         )
         # Reload dynamic feature data from keyboard

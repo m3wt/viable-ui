@@ -13,11 +13,7 @@ import struct
 
 from keycodes.keycodes import Keycode, RESET_KEYCODE
 from protocol.base_protocol import BaseProtocol
-from protocol.constants import (
-    VIABLE_PREFIX,
-    VIABLE_TAP_DANCE_GET,
-    VIABLE_TAP_DANCE_SET,
-)
+from protocol.constants import VIABLE_TAP_DANCE_GET, VIABLE_TAP_DANCE_SET
 from unlocker import Unlocker
 
 
@@ -27,9 +23,8 @@ class ProtocolTapDance(BaseProtocol):
         """Load all tap dance entries from keyboard using Viable protocol."""
         self.tap_dance_entries = []
         for idx in range(self.tap_dance_count):
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BBB", VIABLE_PREFIX, VIABLE_TAP_DANCE_GET, idx),
+            data = self.wrapper.send_viable(
+                struct.pack("BB", VIABLE_TAP_DANCE_GET, idx),
                 retries=20
             )
             # Response: [0xDF] [0x01] [index] [10 bytes of tap_dance_entry]
@@ -63,9 +58,8 @@ class ProtocolTapDance(BaseProtocol):
             entry[4]
         ]
         serialized = struct.pack("<HHHHH", *raw_entry)
-        self.usb_send(
-            self.dev,
-            struct.pack("BBB", VIABLE_PREFIX, VIABLE_TAP_DANCE_SET, idx) + serialized,
+        self.wrapper.send_viable(
+            struct.pack("BB", VIABLE_TAP_DANCE_SET, idx) + serialized,
             retries=20
         )
 
@@ -83,9 +77,8 @@ class ProtocolTapDance(BaseProtocol):
             entry[4]
         ]
         serialized = struct.pack("<HHHHH", *raw_entry)
-        self.usb_send(
-            self.dev,
-            struct.pack("BBB", VIABLE_PREFIX, VIABLE_TAP_DANCE_SET, idx) + serialized,
+        self.wrapper.send_viable(
+            struct.pack("BB", VIABLE_TAP_DANCE_SET, idx) + serialized,
             retries=20
         )
         return True

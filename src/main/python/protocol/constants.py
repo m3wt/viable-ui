@@ -35,8 +35,16 @@ VIALRGB_GET_MODE = 0x41
 VIALRGB_GET_SUPPORTED = 0x42
 VIALRGB_SET_MODE = 0x41
 
-# how much of a macro/keymap buffer we can read/write per packet
+# how much of a macro/keymap buffer we can read/write per packet (legacy/unwrapped)
 BUFFER_FETCH_CHUNK = 28
+
+# VIA buffer chunk size when using client wrapper (accounts for wrapper overhead)
+# 32 total - 6 wrapper header - 4 VIA response header = 22 bytes for data
+VIA_BUFFER_CHUNK_SIZE = 22
+
+# Viable definition chunk size when using client wrapper (accounts for wrapper overhead)
+# 32 total - 5 wrapper header - 5 viable response header = 22 bytes for data
+VIABLE_DEFINITION_CHUNK_SIZE = 22
 
 # When did we get support for advanced macros (including delays in macros)
 VIAL_PROTOCOL_ADVANCED_MACROS = 2

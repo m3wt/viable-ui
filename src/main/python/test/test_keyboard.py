@@ -6,7 +6,7 @@ import os
 from keycodes.keycodes import Keycode
 from protocol.keyboard_comm import Keyboard
 from protocol.constants import VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO, VIABLE_DEFINITION_SIZE, \
-    VIABLE_DEFINITION_CHUNK, BUFFER_FETCH_CHUNK
+    VIABLE_DEFINITION_CHUNK, VIABLE_DEFINITION_CHUNK_SIZE
 from util import chunks, MSG_LEN
 
 
@@ -69,14 +69,15 @@ class SimulatedDevice:
         # Fetch chunks using offset-based protocol
         offset = 0
         while offset < len(compressed):
-            chunk = compressed[offset:offset + BUFFER_FETCH_CHUNK]
-            # Request: [0xDF] [0x0E] [offset_lo] [offset_hi]
-            # Response: [0xDF] [0x0E] [offset_lo] [offset_hi] [28 bytes data]
+            chunk = compressed[offset:offset + VIABLE_DEFINITION_CHUNK_SIZE]
+            actual_size = len(chunk)
+            # Request: [0xDF] [0x0E] [offset:2] [size:1]
+            # Response: [0xDF] [0x0E] [offset:2] [actual_size:1] [data...]
             self.expect(
-                struct.pack("<BBH", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset),
-                struct.pack("<BBH", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset) + chunk
+                struct.pack("<BBHB", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset, VIABLE_DEFINITION_CHUNK_SIZE),
+                struct.pack("<BBHB", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset, actual_size) + chunk
             )
-            offset += BUFFER_FETCH_CHUNK
+            offset += actual_size
 
     def expect_layers(self, layers):
         self.expect("11", struct.pack("BB", 0x11, layers))

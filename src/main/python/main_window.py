@@ -176,8 +176,8 @@ class MainWindow(QMainWindow):
                 # the saved file is invalid - just ignore this
                 logging.warning("Failed to parse stored via_keyboards.json: {}".format(e))
 
-        # make sure initial state is valid
-        self.on_click_refresh()
+        # Initial device discovery handled by autorefresh thread
+        # Don't call on_click_refresh() here - it causes duplicate opens
 
         if sys.platform == "emscripten":
             import vialglue

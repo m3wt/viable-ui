@@ -15,8 +15,9 @@ from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOAR
     CMD_VIA_CUSTOM_SET_VALUE, CMD_VIA_CUSTOM_GET_VALUE, CMD_VIA_CUSTOM_SAVE, \
     VIA_LAYOUT_OPTIONS, VIA_SWITCH_MATRIX_STATE, QMK_BACKLIGHT_BRIGHTNESS, QMK_BACKLIGHT_EFFECT, \
     QMK_RGBLIGHT_BRIGHTNESS, QMK_RGBLIGHT_EFFECT, QMK_RGBLIGHT_EFFECT_SPEED, QMK_RGBLIGHT_COLOR, \
-    VIALRGB_GET_INFO, VIALRGB_GET_MODE, VIALRGB_GET_SUPPORTED, VIALRGB_SET_MODE, BUFFER_FETCH_CHUNK, \
+    VIALRGB_GET_INFO, VIALRGB_GET_MODE, VIALRGB_GET_SUPPORTED, VIALRGB_SET_MODE, VIA_BUFFER_CHUNK_SIZE, \
     VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO, VIABLE_DEFINITION_SIZE, VIABLE_DEFINITION_CHUNK, \
+    VIABLE_DEFINITION_CHUNK_SIZE, \
     VIABLE_QMK_SETTINGS_QUERY, VIABLE_QMK_SETTINGS_GET, VIABLE_QMK_SETTINGS_SET, VIABLE_QMK_SETTINGS_RESET
 from protocol.dynamic import ProtocolDynamic
 from protocol.key_override import ProtocolKeyOverride
@@ -24,6 +25,7 @@ from protocol.macro import ProtocolMacro
 from protocol.svalboard import ProtocolSvalboard
 from protocol.tap_dance import ProtocolTapDance
 from protocol.viable import ProtocolViable
+from protocol.client_wrapper import ClientWrapper
 from unlocker import Unlocker
 from util import MSG_LEN, hid_send
 
@@ -41,6 +43,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def __init__(self, dev, usb_send=hid_send):
         self.dev = dev
         self.usb_send = usb_send
+        self.wrapper = ClientWrapper(dev, usb_send)
         self.definition = None
 
         # n.b. using OrderedDict here to make order of layout requests consistent for tests
@@ -72,6 +75,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
         self.via_protocol = self.keyboard_id = -1
         self.viable_protocol = None  # Viable 0xDF protocol version, or None if not supported
+
+    def via_send(self, msg, retries=20):
+        """Send a VIA command through the wrapper for client ID isolation."""
+        return self.wrapper.send_via(msg, retries=retries)
 
     def reload(self, sideload_json=None):
         """ Load information about the keyboard: number of layers, physical key layout """
@@ -110,11 +117,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def reload_layers(self):
         """ Get how many layers the keyboard has """
 
-        self.layers = self.usb_send(self.dev, struct.pack("B", CMD_VIA_GET_LAYER_COUNT), retries=20)[1]
+        self.layers = self.via_send(struct.pack("B", CMD_VIA_GET_LAYER_COUNT), retries=20)[1]
 
     def reload_via_protocol(self):
         logging.debug(" Sending CMD_VIA_GET_PROTOCOL_VERSION (0x%02X)", CMD_VIA_GET_PROTOCOL_VERSION)
-        data = self.usb_send(self.dev, struct.pack("B", CMD_VIA_GET_PROTOCOL_VERSION), retries=20)
+        data = self.via_send(struct.pack("B", CMD_VIA_GET_PROTOCOL_VERSION), retries=20)
         logging.debug(" Received: %s", data.hex())
         self.via_protocol = struct.unpack(">H", data[1:3])[0]
         logging.debug(" VIA protocol version: %d", self.via_protocol)
@@ -136,9 +143,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             self.sideload = True
             payload = sideload_json
         else:
-            # Probe for Viable 0xDF protocol (v2)
-            logging.debug(" Sending VIABLE_GET_PROTOCOL_INFO (0x%02X 0x%02X)", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO)
-            data = self.usb_send(self.dev, struct.pack("BB", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO), retries=5)
+            # Probe for Viable 0xDF protocol (v2) - uses wrapper for client ID isolation
+            logging.debug(" Sending VIABLE_GET_PROTOCOL_INFO via wrapper")
+            data = self.wrapper.send_viable(struct.pack("B", VIABLE_GET_PROTOCOL_INFO), retries=5)
             logging.debug(" Received: %s", data.hex())
             # v2 Response: [0xDF] [0x00] [ver0-3] [td_count] [combo_count] [ko_count] [ark_count] [flags] [uid0-7]
             if data[0] != VIABLE_PREFIX or data[1] != VIABLE_GET_PROTOCOL_INFO:
@@ -156,8 +163,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             logging.debug(" Keyboard UID: 0x%016X", self.keyboard_id)
 
             # get the size via Viable protocol
-            logging.debug(" Sending VIABLE_DEFINITION_SIZE (0x%02X 0x%02X)", VIABLE_PREFIX, VIABLE_DEFINITION_SIZE)
-            data = self.usb_send(self.dev, struct.pack("BB", VIABLE_PREFIX, VIABLE_DEFINITION_SIZE), retries=20)
+            logging.debug(" Sending VIABLE_DEFINITION_SIZE via wrapper")
+            data = self.wrapper.send_viable(struct.pack("B", VIABLE_DEFINITION_SIZE), retries=20)
             logging.debug(" Received: %s", data.hex())
             # Response: [0xDF] [0x0D] [size0-3]
             sz = struct.unpack("<I", bytes(data[2:6]))[0]
@@ -168,16 +175,16 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             offset = 0
             logging.debug(" Fetching definition chunks...")
             while offset < sz:
-                data = self.usb_send(self.dev, struct.pack("<BBH", VIABLE_PREFIX, VIABLE_DEFINITION_CHUNK, offset),
-                                     retries=20)
-                # Response: [0xDF] [0x0E] [offset_lo] [offset_hi] [28 bytes data]
-                chunk = data[4:4 + BUFFER_FETCH_CHUNK]
-                remaining = sz - offset
-                if remaining < BUFFER_FETCH_CHUNK:
-                    chunk = chunk[:remaining]
+                # Request: [0xDF] [0x0E] [offset:2] [size:1]
+                data = self.wrapper.send_viable(
+                    struct.pack("<BHB", VIABLE_DEFINITION_CHUNK, offset, VIABLE_DEFINITION_CHUNK_SIZE),
+                    retries=20)
+                # Response: [0xDF] [0x0E] [offset:2] [actual_size:1] [data...]
+                actual_size = data[4]
+                chunk = data[5:5 + actual_size]
                 payload += chunk
-                offset += BUFFER_FETCH_CHUNK
-                if offset % 280 == 0:  # Log every 10 chunks
+                offset += actual_size
+                if offset % 220 == 0:  # Log every 10 chunks
                     logging.debug(" Fetched %d/%d bytes", offset, sz)
 
             logging.debug(" All chunks fetched, decompressing %d bytes", len(payload))
@@ -240,10 +247,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         keymap = b""
         # calculate what the size of keymap will be and retrieve the entire binary buffer
         size = self.layers * self.rows * self.cols * 2
-        for x in range(0, size, BUFFER_FETCH_CHUNK):
+        for x in range(0, size, VIA_BUFFER_CHUNK_SIZE):
             offset = x
-            sz = min(size - offset, BUFFER_FETCH_CHUNK)
-            data = self.usb_send(self.dev, struct.pack(">BHB", CMD_VIA_KEYMAP_GET_BUFFER, offset, sz), retries=20)
+            sz = min(size - offset, VIA_BUFFER_CHUNK_SIZE)
+            data = self.via_send(struct.pack(">BHB", CMD_VIA_KEYMAP_GET_BUFFER, offset, sz), retries=20)
             keymap += data[4:4+sz]
 
         for layer in range(self.layers):
@@ -259,13 +266,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         for layer in range(self.layers):
             for idx in self.encoderpos:
                 # VIA3: one call per direction, keycode at bytes 3-4
-                data = self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_ENCODER_GET, layer, idx, 0), retries=20)
+                data = self.via_send(struct.pack("BBBB", CMD_VIA_ENCODER_GET, layer, idx, 0), retries=20)
                 self.encoder_layout[(layer, idx, 0)] = Keycode.serialize(struct.unpack(">H", data[3:5])[0])
-                data = self.usb_send(self.dev, struct.pack("BBBB", CMD_VIA_ENCODER_GET, layer, idx, 1), retries=20)
+                data = self.via_send(struct.pack("BBBB", CMD_VIA_ENCODER_GET, layer, idx, 1), retries=20)
                 self.encoder_layout[(layer, idx, 1)] = Keycode.serialize(struct.unpack(">H", data[3:5])[0])
 
         if self.layout_labels:
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_GET_KEYBOARD_VALUE, VIA_LAYOUT_OPTIONS),
+            data = self.via_send(struct.pack("BB", CMD_VIA_GET_KEYBOARD_VALUE, VIA_LAYOUT_OPTIONS),
                                  retries=20)
             self.layout_options = struct.unpack(">I", data[2:6])[0]
 
@@ -281,7 +288,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             self.lighting_vialrgb = self.definition["lighting"] == "vialrgb"
 
         if self.lighting_vialrgb:
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_INFO),
+            data = self.via_send(struct.pack("BB", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_INFO),
                                  retries=20)[2:]
             self.rgb_version = data[0] | (data[1] << 8)
             if self.rgb_version != 1:
@@ -292,7 +299,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             self.rgb_supported_effects = {0}
             max_effect = 0
             while max_effect < 0xFFFF:
-                data = self.usb_send(self.dev, struct.pack("<BBH", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_SUPPORTED,
+                data = self.via_send(struct.pack("<BBH", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_SUPPORTED,
                                                            max_effect))[2:]
                 for x in range(0, len(data), 2):
                     value = int.from_bytes(data[x:x+2], byteorder="little")
@@ -302,25 +309,25 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
     def reload_rgb(self):
         if self.lighting_qmk_rgblight:
-            self.underglow_brightness = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_BRIGHTNESS), retries=20)[2]
-            self.underglow_effect = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_EFFECT), retries=20)[2]
-            self.underglow_effect_speed = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_EFFECT_SPEED), retries=20)[2]
-            color = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_COLOR), retries=20)[2:4]
+            self.underglow_brightness = self.via_send(
+                struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_BRIGHTNESS), retries=20)[2]
+            self.underglow_effect = self.via_send(
+                struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_EFFECT), retries=20)[2]
+            self.underglow_effect_speed = self.via_send(
+                struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_EFFECT_SPEED), retries=20)[2]
+            color = self.via_send(
+                struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_RGBLIGHT_COLOR), retries=20)[2:4]
             # hue, sat
             self.underglow_color = (color[0], color[1])
 
         if self.lighting_qmk_backlight:
-            self.backlight_brightness = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_BACKLIGHT_BRIGHTNESS), retries=20)[2]
-            self.backlight_effect = self.usb_send(
-                self.dev, struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_BACKLIGHT_EFFECT), retries=20)[2]
+            self.backlight_brightness = self.via_send(
+                struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_BACKLIGHT_BRIGHTNESS), retries=20)[2]
+            self.backlight_effect = self.via_send(
+                struct.pack(">BB", CMD_VIA_LIGHTING_GET_VALUE, QMK_BACKLIGHT_EFFECT), retries=20)[2]
 
         if self.lighting_vialrgb:
-            data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_MODE),
+            data = self.via_send(struct.pack("BB", CMD_VIA_LIGHTING_GET_VALUE, VIALRGB_GET_MODE),
                                  retries=20)[2:]
             self.rgb_mode = int.from_bytes(data[0:2], byteorder="little")
             self.rgb_speed = data[2]
@@ -333,8 +340,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         # Query supported QSIDs via 0xDF protocol
         cur = 0
         while cur != 0xFFFF:
-            data = self.usb_send(self.dev, struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_QUERY, cur),
-                                 retries=20)
+            data = self.wrapper.send_viable(struct.pack("<BH", VIABLE_QMK_SETTINGS_QUERY, cur),
+                                            retries=20)
             # Response: [0xDF] [0x10] [qsid1_lo] [qsid1_hi] ... [0xFF] [0xFF]
             # Firmware fills unused entries with 0xFFFF, so stop when we hit it
             for x in range(2, len(data), 2):
@@ -354,8 +361,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
             # Request: [0xDF] [0x11] [qsid_lo] [qsid_hi]
             # Response: [0xDF] [0x11] [status] [value bytes...]
-            data = self.usb_send(self.dev, struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_GET, qsid),
-                                 retries=20)
+            data = self.wrapper.send_viable(struct.pack("<BH", VIABLE_QMK_SETTINGS_GET, qsid),
+                                            retries=20)
             if data[2] == 0:  # status = success
                 self.settings[qsid] = QmkSettings.qsid_deserialize(qsid, data[3:])
 
@@ -365,7 +372,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             if code == RESET_KEYCODE:
                 Unlocker.unlock(self)
 
-            self.usb_send(self.dev, struct.pack(">BBBBH", CMD_VIA_SET_KEYCODE, layer, row, col,
+            self.via_send(struct.pack(">BBBBH", CMD_VIA_SET_KEYCODE, layer, row, col,
                                                 Keycode.deserialize(code)), retries=20)
             self.layout[key] = code
 
@@ -373,7 +380,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         """Send a key change to the device (used by ChangeManager)."""
         if code == RESET_KEYCODE:
             Unlocker.unlock(self)
-        self.usb_send(self.dev, struct.pack(">BBBBH", CMD_VIA_SET_KEYCODE, layer, row, col,
+        self.via_send(struct.pack(">BBBBH", CMD_VIA_SET_KEYCODE, layer, row, col,
                                             Keycode.deserialize(code)), retries=20)
         self.layout[(layer, row, col)] = code
         return True
@@ -382,14 +389,14 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         key = (layer, index, direction)
         if self.encoder_layout[key] != code:
             # VIA3: [0x15] [layer] [encoder_id] [direction] [keycode_hi] [keycode_lo]
-            self.usb_send(self.dev, struct.pack(">BBBBH", CMD_VIA_ENCODER_SET,
+            self.via_send(struct.pack(">BBBBH", CMD_VIA_ENCODER_SET,
                                                 layer, index, direction, Keycode.deserialize(code)), retries=20)
             self.encoder_layout[key] = code
 
     def _commit_encoder(self, layer, index, direction, code):
         """Send an encoder change to the device (used by ChangeManager)."""
         # VIA3: [0x15] [layer] [encoder_id] [direction] [keycode_hi] [keycode_lo]
-        self.usb_send(self.dev, struct.pack(">BBBBH", CMD_VIA_ENCODER_SET,
+        self.via_send(struct.pack(">BBBBH", CMD_VIA_ENCODER_SET,
                                             layer, index, direction, Keycode.deserialize(code)), retries=20)
         self.encoder_layout[(layer, index, direction)] = code
         return True
@@ -397,38 +404,38 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def set_layout_options(self, options):
         if self.layout_options != -1 and self.layout_options != options:
             self.layout_options = options
-            self.usb_send(self.dev, struct.pack(">BBI", CMD_VIA_SET_KEYBOARD_VALUE, VIA_LAYOUT_OPTIONS, options),
+            self.via_send(struct.pack(">BBI", CMD_VIA_SET_KEYBOARD_VALUE, VIA_LAYOUT_OPTIONS, options),
                           retries=20)
 
     def set_qmk_rgblight_brightness(self, value):
         self.underglow_brightness = value
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_BRIGHTNESS, value),
+        self.via_send(struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_BRIGHTNESS, value),
                       retries=20)
 
     def set_qmk_rgblight_effect(self, index):
         self.underglow_effect = index
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_EFFECT, index),
+        self.via_send(struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_EFFECT, index),
                       retries=20)
 
     def set_qmk_rgblight_effect_speed(self, value):
         self.underglow_effect_speed = value
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_EFFECT_SPEED, value),
+        self.via_send(struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_EFFECT_SPEED, value),
                       retries=20)
 
     def set_qmk_rgblight_color(self, h, s, v):
         self.set_qmk_rgblight_brightness(v)
-        self.usb_send(self.dev, struct.pack(">BBBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_COLOR, h, s))
+        self.via_send(struct.pack(">BBBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_RGBLIGHT_COLOR, h, s))
 
     def set_qmk_backlight_brightness(self, value):
         self.backlight_brightness = value
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_BACKLIGHT_BRIGHTNESS, value))
+        self.via_send(struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_BACKLIGHT_BRIGHTNESS, value))
 
     def set_qmk_backlight_effect(self, value):
         self.backlight_effect = value
-        self.usb_send(self.dev, struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_BACKLIGHT_EFFECT, value))
+        self.via_send(struct.pack(">BBB", CMD_VIA_LIGHTING_SET_VALUE, QMK_BACKLIGHT_EFFECT, value))
 
     def save_rgb(self):
-        self.usb_send(self.dev, struct.pack(">B", CMD_VIA_LIGHTING_SAVE), retries=20)
+        self.via_send(struct.pack(">B", CMD_VIA_LIGHTING_SAVE), retries=20)
 
     def save_layout(self):
         """ Serializes current layout to a binary """
@@ -534,7 +541,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 self.qmk_settings_set(qsid, value)
 
     def reset(self):
-        self.usb_send(self.dev, struct.pack("B", 0xB))
+        self.via_send(struct.pack("B", 0xB))
         self.dev.close()
 
     def get_uid(self):
@@ -570,7 +577,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         if self.via_protocol < 0:
             return
 
-        data = self.usb_send(self.dev, struct.pack("BB", CMD_VIA_GET_KEYBOARD_VALUE, VIA_SWITCH_MATRIX_STATE),
+        data = self.via_send(struct.pack("BB", CMD_VIA_GET_KEYBOARD_VALUE, VIA_SWITCH_MATRIX_STATE),
                              retries=3)
         return data
 
@@ -580,8 +587,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         # Serialize value to bytes
         value_bytes = QmkSettings.qsid_serialize(qsid, value)
         # Request: [0xDF] [0x12] [qsid_lo] [qsid_hi] [value bytes...]
-        msg = struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_SET, qsid) + value_bytes
-        data = self.usb_send(self.dev, msg, retries=20)
+        msg = struct.pack("<BH", VIABLE_QMK_SETTINGS_SET, qsid) + value_bytes
+        data = self.wrapper.send_viable(msg, retries=20)
         # Response: [0xDF] [0x12] [status]
         status = data[2]
         if status == 0:
@@ -595,8 +602,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         # Serialize value to bytes
         value_bytes = QmkSettings.qsid_serialize(qsid, value)
         # Request: [0xDF] [0x12] [qsid_lo] [qsid_hi] [value bytes...]
-        msg = struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_SET, qsid) + value_bytes
-        data = self.usb_send(self.dev, msg, retries=20)
+        msg = struct.pack("<BH", VIABLE_QMK_SETTINGS_SET, qsid) + value_bytes
+        data = self.wrapper.send_viable(msg, retries=20)
         # Response: [0xDF] [0x12] [status]
         status = data[2]
         if status == 0:
@@ -606,12 +613,12 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
     def qmk_settings_reset(self):
         # Request: [0xDF] [0x13]
-        self.usb_send(self.dev, struct.pack("BB", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_RESET), retries=20)
+        self.wrapper.send_viable(struct.pack("B", VIABLE_QMK_SETTINGS_RESET), retries=20)
         # Reload settings from firmware
         self.reload_settings()
 
     def _vialrgb_set_mode(self):
-        self.usb_send(self.dev, struct.pack("BBHBBBB", CMD_VIA_LIGHTING_SET_VALUE, VIALRGB_SET_MODE,
+        self.via_send(struct.pack("BBHBBBB", CMD_VIA_LIGHTING_SET_VALUE, VIALRGB_SET_MODE,
                                             self.rgb_mode, self.rgb_speed,
                                             self.rgb_hsv[0], self.rgb_hsv[1], self.rgb_hsv[2]))
 
@@ -657,7 +664,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         - 5: QMK led_matrix
         """
         msg = struct.pack("BBB", CMD_VIA_CUSTOM_GET_VALUE, channel, value_id)
-        data = self.usb_send(self.dev, msg, retries=20)
+        data = self.via_send(msg, retries=20)
         # Response: [cmd] [channel] [value_id] [data...]
         return data[3:] if len(data) > 3 else bytes()
 
@@ -668,7 +675,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         Packet: [0x07] [channel] [value_id] [data...]
         """
         msg = struct.pack("BBB", CMD_VIA_CUSTOM_SET_VALUE, channel, value_id) + bytes(data)
-        self.usb_send(self.dev, msg, retries=20)
+        self.via_send(msg, retries=20)
 
     def custom_value_save(self, channel):
         """
@@ -677,7 +684,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         Packet: [0x09] [channel]
         """
         msg = struct.pack("BB", CMD_VIA_CUSTOM_SAVE, channel)
-        self.usb_send(self.dev, msg, retries=20)
+        self.via_send(msg, retries=20)
 
     def _commit_custom_value(self, channel, value_id, data):
         """

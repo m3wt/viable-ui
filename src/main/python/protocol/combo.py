@@ -11,11 +11,7 @@ import struct
 
 from keycodes.keycodes import Keycode, RESET_KEYCODE
 from protocol.base_protocol import BaseProtocol
-from protocol.constants import (
-    VIABLE_PREFIX,
-    VIABLE_COMBO_GET,
-    VIABLE_COMBO_SET,
-)
+from protocol.constants import VIABLE_COMBO_GET, VIABLE_COMBO_SET
 from unlocker import Unlocker
 
 
@@ -25,9 +21,8 @@ class ProtocolCombo(BaseProtocol):
         """Load all combo entries from keyboard using Viable protocol."""
         self.combo_entries = []
         for idx in range(self.combo_count):
-            data = self.usb_send(
-                self.dev,
-                struct.pack("BBB", VIABLE_PREFIX, VIABLE_COMBO_GET, idx),
+            data = self.wrapper.send_viable(
+                struct.pack("BB", VIABLE_COMBO_GET, idx),
                 retries=20
             )
             # Response: [0xDF] [0x03] [index] [12 bytes of combo_entry]
@@ -63,9 +58,8 @@ class ProtocolCombo(BaseProtocol):
             entry[5]  # custom_combo_term
         ]
         serialized = struct.pack("<HHHHHH", *raw_entry)
-        self.usb_send(
-            self.dev,
-            struct.pack("BBB", VIABLE_PREFIX, VIABLE_COMBO_SET, idx) + serialized,
+        self.wrapper.send_viable(
+            struct.pack("BB", VIABLE_COMBO_SET, idx) + serialized,
             retries=20
         )
 
@@ -83,9 +77,8 @@ class ProtocolCombo(BaseProtocol):
             entry[5]
         ]
         serialized = struct.pack("<HHHHHH", *raw_entry)
-        self.usb_send(
-            self.dev,
-            struct.pack("BBB", VIABLE_PREFIX, VIABLE_COMBO_SET, idx) + serialized,
+        self.wrapper.send_viable(
+            struct.pack("BB", VIABLE_COMBO_SET, idx) + serialized,
             retries=20
         )
         return True
