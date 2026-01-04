@@ -214,6 +214,32 @@ class AltRepeatKeyChange(Change):
         return f"AltRepeatKeyChange(index={self.index})"
 
 
+class LeaderChange(Change):
+    """Change to a leader key entry."""
+
+    def __init__(self, index: int, old_value: Any, new_value: Any):
+        self.index = index
+        self.old_value = old_value
+        self.new_value = new_value
+
+    def key(self) -> Tuple:
+        return ('leader', self.index)
+
+    def apply(self, keyboard) -> bool:
+        return keyboard._commit_leader(self.index, self.new_value)
+
+    def revert(self, keyboard) -> bool:
+        return keyboard._commit_leader(self.index, self.old_value)
+
+    def restore_local(self, keyboard, use_old: bool) -> None:
+        value = self.old_value if use_old else self.new_value
+        if hasattr(keyboard, 'leader_entries') and self.index < len(keyboard.leader_entries):
+            keyboard.leader_entries[self.index] = value
+
+    def __repr__(self):
+        return f"LeaderChange(index={self.index})"
+
+
 class MacroChange(Change):
     """Change to a single macro."""
 

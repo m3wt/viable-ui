@@ -21,6 +21,7 @@ from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_KEYBOAR
     VIABLE_QMK_SETTINGS_QUERY, VIABLE_QMK_SETTINGS_GET, VIABLE_QMK_SETTINGS_SET, VIABLE_QMK_SETTINGS_RESET
 from protocol.dynamic import ProtocolDynamic
 from protocol.key_override import ProtocolKeyOverride
+from protocol.leader import ProtocolLeader
 from protocol.macro import ProtocolMacro
 from protocol.svalboard import ProtocolSvalboard
 from protocol.tap_dance import ProtocolTapDance
@@ -37,7 +38,7 @@ class ProtocolError(Exception):
     pass
 
 
-class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride, ProtocolAltRepeatKey, ProtocolViable, ProtocolSvalboard):
+class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride, ProtocolAltRepeatKey, ProtocolLeader, ProtocolViable, ProtocolSvalboard):
     """ Low-level communication with a vial-enabled keyboard """
 
     def __init__(self, dev, usb_send=hid_send):
@@ -112,6 +113,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.reload_combo()
         self.reload_key_override()
         self.reload_alt_repeat_key()
+        self.reload_leader()
         self.reload_svalboard()
 
     def reload_layers(self):
@@ -158,8 +160,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             if version == 0:
                 raise RuntimeError("Invalid Viable protocol version")
             self.viable_protocol = version
-            # Read keyboard UID (8 bytes at offset 11, for .vil compatibility)
-            self.keyboard_id = struct.unpack("<Q", bytes(data[11:19]))[0]
+            # Read keyboard UID (8 bytes at offset 6, for save file matching)
+            self.keyboard_id = struct.unpack("<Q", bytes(data[6:14]))[0]
             logging.debug(" Keyboard UID: 0x%016X", self.keyboard_id)
 
             # get the size via Viable protocol
@@ -206,6 +208,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.cols = payload["matrix"]["cols"]
 
         self.custom_keycodes = payload.get("customKeycodes", None)
+
+        # Parse viable config (entry counts) from definition
+        viable_config = payload.get("viable", {})
+        self.reload_viable_config(viable_config)
 
         serial = KleSerial()
         kb = serial.deserialize(payload["layouts"]["keymap"])
@@ -338,19 +344,24 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.supported_settings = set()
 
         # Query supported QSIDs via 0xDF protocol
+        # Firmware returns QSIDs > cur, terminated by 0xFFFF
+        # We paginate by querying with increasing cur until no new QSIDs are returned
         cur = 0
-        while cur != 0xFFFF:
+        while True:
             data = self.wrapper.send_viable(struct.pack("<BH", VIABLE_QMK_SETTINGS_QUERY, cur),
                                             retries=20)
             # Response: [0xDF] [0x10] [qsid1_lo] [qsid1_hi] ... [0xFF] [0xFF]
-            # Firmware fills unused entries with 0xFFFF, so stop when we hit it
+            got_any = False
             for x in range(2, len(data), 2):
                 qsid = int.from_bytes(data[x:x+2], byteorder="little")
                 if qsid == 0xFFFF:
-                    cur = 0xFFFF
                     break
+                got_any = True
                 cur = max(cur, qsid)
                 self.supported_settings.add(qsid)
+            # If we got no new QSIDs, we're done
+            if not got_any:
+                break
 
         # Get values for supported settings
         for qsid in self.supported_settings:
@@ -476,6 +487,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         data["combo"] = self.save_combo()
         data["key_override"] = self.save_key_override()
         data["alt_repeat_key"] = self.save_alt_repeat_key()
+        data["leader"] = self.save_leader()
         data["oneshot"] = self.save_oneshot()
         data["settings"] = self.settings
 
@@ -531,6 +543,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.restore_combo(data.get("combo", []))
         self.restore_key_override(data.get("key_override", []))
         self.restore_alt_repeat_key(data.get("alt_repeat_key", []))
+        self.restore_leader(data.get("leader", []))
         self.restore_oneshot(data.get("oneshot"))
 
         for qsid, value in data.get("settings", dict()).items():

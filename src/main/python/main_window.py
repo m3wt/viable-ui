@@ -17,6 +17,7 @@ from autorefresh.autorefresh import Autorefresh
 from change_manager import ChangeManager
 from editor.alt_repeat_key import AltRepeatKey
 from editor.combos import Combos
+from editor.leader import Leader
 from constants import WINDOW_WIDTH, WINDOW_HEIGHT
 from widgets.editor_container import EditorContainer
 from editor.custom_ui_editor import CustomUIEditor
@@ -89,6 +90,7 @@ class MainWindow(QMainWindow):
         self.macro_recorder = MacroRecorder()
         self.tap_dance = TapDance()
         self.combos = Combos()
+        self.leader = Leader()
         self.key_override = KeyOverride()
         self.alt_repeat_key = AltRepeatKey()
         self.custom_ui_editor = CustomUIEditor()
@@ -99,7 +101,7 @@ class MainWindow(QMainWindow):
 
         self.editors = [(self.keymap_editor, "Keymap"), (self.layout_editor, "Layout"), (self.macro_recorder, "Macros"),
                         (self.rgb_configurator, "Lighting"), (self.tap_dance, "Tap Dance"), (self.combos, "Combos"),
-                        (self.key_override, "Key Overrides"), (self.alt_repeat_key, "Alt Repeat Key"),
+                        (self.leader, "Leader"), (self.key_override, "Key Overrides"), (self.alt_repeat_key, "Alt Repeat Key"),
                         (self.custom_ui_editor, "Keyboard Settings"),
                         (self.qmk_settings, "QMK Settings"),
                         (self.matrix_tester, "Matrix tester"), (self.firmware_flasher, "Firmware updater")]
@@ -423,7 +425,7 @@ class MainWindow(QMainWindow):
             self.autorefresh.current_device.keyboard.reload()
 
         for e in [self.layout_editor, self.keymap_editor, self.firmware_flasher, self.macro_recorder,
-                  self.tap_dance, self.combos, self.key_override, self.alt_repeat_key,
+                  self.tap_dance, self.combos, self.leader, self.key_override, self.alt_repeat_key,
                   self.qmk_settings, self.matrix_tester, self.rgb_configurator, self.custom_ui_editor]:
             e.rebuild(self.autorefresh.current_device)
 
@@ -465,6 +467,7 @@ class MainWindow(QMainWindow):
             'Macros': ('macro',),
             'Tap Dance': ('tap_dance',),
             'Combos': ('combo',),
+            'Leader': ('leader',),
             'Key Overrides': ('key_override',),
             'Alt Repeat Key': ('alt_repeat_key',),
             'QMK Settings': ('qmk_setting',),
@@ -674,6 +677,7 @@ class MainWindow(QMainWindow):
             'macro': 'Macros',
             'tap_dance': 'Tap Dance',
             'combo': 'Combos',
+            'leader': 'Leader',
             'key_override': 'Key Overrides',
             'alt_repeat_key': 'Alt Repeat Key',
             'qmk_setting': 'QMK Settings',

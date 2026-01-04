@@ -44,6 +44,8 @@ From `viable.h`:
 | 0x11 | QMK Settings Get | GET |
 | 0x12 | QMK Settings Set | SET |
 | 0x13 | QMK Settings Reset | — |
+| 0x14 | Leader Get | GET |
+| 0x15 | Leader Set | SET |
 
 ---
 
@@ -51,15 +53,39 @@ From `viable.h`:
 
 **Request:** `[0xDF] [0x00]`
 
-**Response:** `[0xDF] [0x00] [ver0-3] [td_count] [combo_count] [ko_count] [ark_count] [flags] [uid0-7]`
+**Response:** `[0xDF] [0x00] [ver0-3] [uid0-7] [flags]`
 
-- `ver0-3`: uint32_t protocol version (little-endian)
-- `td_count`: uint8_t tap dance slot count
-- `combo_count`: uint8_t combo slot count
-- `ko_count`: uint8_t key override slot count
-- `ark_count`: uint8_t alt repeat key slot count
-- `flags`: uint8_t feature flags
-- `uid0-7`: 8-byte keyboard UID
+- `ver0-3`: uint32_t protocol version (little-endian), offset 2-5
+- `uid0-7`: 8-byte keyboard UID, offset 6-13 (for save file matching)
+- `flags`: uint8_t feature flags, offset 14
+
+**Feature flags:**
+| Bit | Feature |
+|-----|---------|
+| 0 | Tap Dance |
+| 1 | Combo |
+| 2 | Key Override |
+| 3 | Leader |
+
+**Note:** Feature counts (tap dance, combo, key override, alt repeat key, leader) are no longer
+in the protocol info response. They are now defined in the keyboard's `viable.json` under the
+`"viable"` object, providing unlimited extensibility:
+
+```json
+{
+  "name": "Svalboard",
+  "viable": {
+    "tap_dance": 50,
+    "combo": 50,
+    "key_override": 30,
+    "alt_repeat_key": 16,
+    "leader": 32
+  },
+  ...
+}
+```
+
+Features not listed get 0 entries (disabled) and their code is excluded from the firmware build.
 
 ---
 
@@ -233,6 +259,33 @@ Read chunks until offset >= size.
 
 ---
 
+## 0x14: Leader Get
+
+**Request:** `[0xDF] [0x14] [index]`
+
+**Response:** `[0xDF] [0x14] [index] [14 bytes entry]`
+
+**Entry format (14 bytes):**
+```c
+struct leader_entry_t {
+    uint16_t sequence[5];  // Up to 5 trigger keys in order (0x0000 = unused/end)
+    uint16_t output;       // Output keycode
+    uint16_t options;      // bit 15 = enabled, bits 0-14 = reserved
+};
+```
+
+**Enabled:** When `options & 0x8000`
+
+---
+
+## 0x15: Leader Set
+
+**Request:** `[0xDF] [0x15] [index] [14 bytes entry]`
+
+**Response:** `[0xDF] [0x15] [status]`
+
+---
+
 ## Entry Sizes Summary
 
 | Feature | Entry Size | Enabled Flag |
@@ -241,6 +294,7 @@ Read chunks until offset >= size.
 | Combo | 12 bytes | `custom_combo_term & 0x8000` |
 | Key Override | 12 bytes | `options & 0x80` |
 | Alt Repeat Key | 6 bytes | `options & 0x08` |
+| Leader | 14 bytes | `options & 0x8000` |
 
 ---
 

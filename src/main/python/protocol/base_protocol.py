@@ -12,6 +12,13 @@ class BaseProtocol:
     macro_memory = 0
     macro = b""
 
+    # Viable protocol feature counts (set by reload_viable_config from JSON)
+    tap_dance_count = 0
+    combo_count = 0
+    key_override_count = 0
+    alt_repeat_key_count = 0
+    leader_count = 0
+
     def via_send(self, msg, retries=20):
         """Send a VIA command through the wrapper for client ID isolation."""
         return self.wrapper.send_via(msg, retries=retries)
