@@ -113,8 +113,8 @@ class MatrixTest(BasicEditor):
         row_size = math.ceil(cols / 8)
 
         for row in range(rows):
-            # Make slice of bytes for the row (skip first 2 bytes, they're for VIAL)
-            row_data_start = 2 + (row * row_size)
+            # Make slice of bytes for the row (skip first 3 bytes: cmd echo, value ID, offset)
+            row_data_start = 3 + (row * row_size)
             row_data_end = row_data_start + row_size
             row_data = data[row_data_start:row_data_end]
 
