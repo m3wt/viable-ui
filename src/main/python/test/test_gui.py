@@ -31,6 +31,12 @@ FAKE_KEYBOARD = """
     "rows": 2,
     "cols": 2
   },
+  "viable": {
+    "tap_dance": 16,
+    "combo": 16,
+    "key_override": 16,
+    "alt_repeat_key": 16
+  },
   "layouts": {
     "keymap": [
       [
@@ -51,6 +57,12 @@ FAKE_KEYBOARD_WITH_MENUS = """
   "matrix": {
     "rows": 2,
     "cols": 2
+  },
+  "viable": {
+    "tap_dance": 16,
+    "combo": 16,
+    "key_override": 16,
+    "alt_repeat_key": 16
   },
   "menus": [
     {
@@ -159,69 +171,93 @@ class VirtualKeyboard:
     def viable_cmd(self, msg):
         """Handle Viable 0xDF protocol commands."""
         if msg[1] == VIABLE_GET_PROTOCOL_INFO:
-            # Response: [0xDF] [0x00] [ver0-3] [td_count] [combo_count] [ko_count] [ark_count] [flags]
+            # Response: [0xDF] [0x00] [ver0-3] [uid0-7] [flags]
             # Version is 4 bytes little-endian at offset 2
+            # UID is 8 bytes at offset 6
+            # Flags at offset 14
             features = 0b00000011  # Caps Word and Layer Lock
-            return struct.pack("<BBIBBBBB", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO,
+            uid = 0x123456789ABCDEF0  # Fake UID for testing
+            return struct.pack("<BBIQB", VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO,
                                1,  # version (4 bytes little-endian)
-                               len(self.tap_dance), len(self.combos),
-                               len(self.key_overrides), len(self.alt_repeat_keys), features)
+                               uid,  # 8-byte UID
+                               features)
         elif msg[1] == VIABLE_TAP_DANCE_GET:
             idx = msg[2]
-            assert idx < len(self.tap_dance)
+            # Return empty entry if index is beyond what was provided
+            if idx < len(self.tap_dance):
+                entry = self.tap_dance[idx]
+            else:
+                entry = (0, 0, 0, 0, 200)  # Empty tap dance entry
             # Response: [0xDF] [0x01] [index] [10 bytes of tap_dance_entry]
             return struct.pack("<BBB", VIABLE_PREFIX, VIABLE_TAP_DANCE_GET, idx) + \
-                   struct.pack("<HHHHH", *self.tap_dance[idx])
+                   struct.pack("<HHHHH", *entry)
         elif msg[1] == VIABLE_TAP_DANCE_SET:
             idx = msg[2]
             values = struct.unpack_from("<HHHHH", msg[3:])
-            assert idx < len(self.tap_dance)
+            # Extend list if needed
+            while idx >= len(self.tap_dance):
+                self.tap_dance.append((0, 0, 0, 0, 200))
             self.tap_dance[idx] = values
             # Response: [0xDF] [0x02] [index]
             return struct.pack("BBB", VIABLE_PREFIX, VIABLE_TAP_DANCE_SET, idx)
         elif msg[1] == VIABLE_COMBO_GET:
             idx = msg[2]
-            assert idx < len(self.combos)
+            # Return empty entry if index is beyond what was provided
+            if idx < len(self.combos):
+                combo = self.combos[idx]
+                if len(combo) == 5:
+                    combo = combo + (0,)
+            else:
+                combo = (0, 0, 0, 0, 0, 0)  # Empty combo entry
             # Response: [0xDF] [0x03] [index] [12 bytes of combo_entry]
-            combo = self.combos[idx]
-            if len(combo) == 5:
-                combo = combo + (0,)
             return struct.pack("<BBB", VIABLE_PREFIX, VIABLE_COMBO_GET, idx) + \
                    struct.pack("<HHHHHH", *combo)
         elif msg[1] == VIABLE_COMBO_SET:
             idx = msg[2]
             keys = struct.unpack_from("<HHHHHH", msg[3:])
-            assert idx < len(self.combos)
+            # Extend list if needed
+            while idx >= len(self.combos):
+                self.combos.append((0, 0, 0, 0, 0, 0))
             self.combos[idx] = keys
             # Response: [0xDF] [0x04] [index]
             return struct.pack("BBB", VIABLE_PREFIX, VIABLE_COMBO_SET, idx)
         elif msg[1] == VIABLE_KEY_OVERRIDE_GET:
             idx = msg[2]
-            assert idx < len(self.key_overrides)
+            # Return empty entry if index is beyond what was provided
+            if idx < len(self.key_overrides):
+                ko = self.key_overrides[idx]
+            else:
+                ko = (0, 0, 0, 0, 0, 0, 0)  # Empty key override entry
             # Response: [0xDF] [0x05] [index] [12 bytes of key_override_entry]
             # key_override: [trigger, replacement, layers, trigger_mods, negative_mod_mask, suppressed_mods, options]
-            ko = self.key_overrides[idx]
             return struct.pack("<BBB", VIABLE_PREFIX, VIABLE_KEY_OVERRIDE_GET, idx) + \
                    struct.pack("<HHIBBBB", *ko)
         elif msg[1] == VIABLE_KEY_OVERRIDE_SET:
             idx = msg[2]
             values = struct.unpack_from("<HHIBBBB", msg[3:])
-            assert idx < len(self.key_overrides)
+            # Extend list if needed
+            while idx >= len(self.key_overrides):
+                self.key_overrides.append((0, 0, 0, 0, 0, 0, 0))
             self.key_overrides[idx] = values
             # Response: [0xDF] [0x06] [index]
             return struct.pack("BBB", VIABLE_PREFIX, VIABLE_KEY_OVERRIDE_SET, idx)
         elif msg[1] == VIABLE_ALT_REPEAT_KEY_GET:
             idx = msg[2]
-            assert idx < len(self.alt_repeat_keys)
+            # Return empty entry if index is beyond what was provided
+            if idx < len(self.alt_repeat_keys):
+                ark = self.alt_repeat_keys[idx]
+            else:
+                ark = (0, 0, 0, 0)  # Empty alt repeat key entry
             # Response: [0xDF] [0x07] [index] [6 bytes of alt_repeat_key_entry]
             # alt_repeat_key: [keycode, alt_keycode, allowed_mods, options]
-            ark = self.alt_repeat_keys[idx]
             return struct.pack("<BBB", VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_GET, idx) + \
                    struct.pack("<HHBB", *ark)
         elif msg[1] == VIABLE_ALT_REPEAT_KEY_SET:
             idx = msg[2]
             values = struct.unpack_from("<HHBB", msg[3:])
-            assert idx < len(self.alt_repeat_keys)
+            # Extend list if needed
+            while idx >= len(self.alt_repeat_keys):
+                self.alt_repeat_keys.append((0, 0, 0, 0))
             self.alt_repeat_keys[idx] = values
             # Response: [0xDF] [0x08] [index]
             return struct.pack("BBB", VIABLE_PREFIX, VIABLE_ALT_REPEAT_KEY_SET, idx)
@@ -435,10 +471,10 @@ def test_about_keyboard(qtbot):
          'Macro delays: yes\n'
          'Complex (2-byte) macro keycodes: yes\n'
          '\n'
-         'Tap Dance entries: unsupported - disabled in firmware\n'
-         'Combo entries: unsupported - disabled in firmware\n'
-         'Key Override entries: unsupported - disabled in firmware\n'
-         'Alt Repeat Key entries: unsupported - disabled in firmware\n'
+         'Tap Dance entries: 16\n'
+         'Combo entries: 16\n'
+         'Key Override entries: 16\n'
+         'Alt Repeat Key entries: 16\n'
          'Caps Word: yes\n'
          'Layer Lock: yes\n'
          '\n'
@@ -628,7 +664,8 @@ def test_combos(qtbot):
     assert combos is not None, "could not find the combos tab"
 
     # New UI uses combo_entries list with FlowLayout
-    assert len(combos.combo_entries) == 3
+    # Count comes from viable.json (16), first 3 have test data
+    assert len(combos.combo_entries) == 16
 
     def check_entry(idx, keys):
         entry = combos.combo_entries[idx]
@@ -685,7 +722,8 @@ def test_tap_dance(qtbot):
     assert tde is not None, "could not find the tap dance tab"
 
     # New UI uses tap_dance_entries list with FlowLayout
-    assert len(tde.tap_dance_entries) == 3
+    # Count comes from viable.json (16), first 3 have test data
+    assert len(tde.tap_dance_entries) == 16
 
     def check_entry(idx, keys, timeout):
         entry = tde.tap_dance_entries[idx]
