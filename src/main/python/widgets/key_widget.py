@@ -1,4 +1,4 @@
-from qtpy.QtCore import Signal
+from qtpy.QtCore import Signal, QSize
 
 from keycodes.keycodes import Keycode
 from any_keycode_dialog import AnyKeycodeDialog
@@ -109,3 +109,7 @@ class KeyWidget(KeyboardWidget):
 
     def on_keymap_override(self):
         self.update_display()
+
+    def minimumSizeHint(self):
+        # KeyWidget needs its full size for proper layout in FlowLayout
+        return QSize(self.width, self.height)

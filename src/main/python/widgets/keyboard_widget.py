@@ -551,7 +551,9 @@ class KeyboardWidget(QWidget):
         qp.end()
 
     def minimumSizeHint(self):
-        return QSize(self.width, self.height)
+        # Return small size to allow scroll areas to shrink
+        # Note: KeyWidget overrides this to return full size
+        return QSize(100, 100)
 
     def sizeHint(self):
         return QSize(self.width, self.height)

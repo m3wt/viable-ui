@@ -17,6 +17,8 @@ from qtpy.QtWidgets import (
     QGroupBox, QTabWidget, QScrollArea, QSizePolicy, QColorDialog,
     QFrame
 )
+from widgets.flowlayout import FlowLayout
+from widgets.balanced_grid_layout import BalancedGridLayout
 from qtpy.QtGui import QColor
 
 from change_manager import ChangeManager, CustomValueChange
@@ -129,26 +131,40 @@ class CustomUIRenderer(QObject):
     def _render_menu_content(self, menu: dict) -> QWidget:
         """Render the content of a menu (sections)."""
         widget = QWidget()
-        layout = QVBoxLayout()
+        content = menu.get("content", [])
+
+        # Check if content is all direct controls (no sections) - use compact grid
+        has_sections = any(isinstance(item, dict) and not item.get("type") for item in content)
+
+        if has_sections:
+            # Sections/groupboxes: balanced grid with stretch
+            layout = BalancedGridLayout(spacing=12, stretch_items=True)
+        else:
+            # Direct controls: compact balanced grid
+            layout = BalancedGridLayout(spacing=8)
+
+        layout.setContentsMargins(8, 8, 8, 8)
         widget.setLayout(layout)
 
-        content = menu.get("content", [])
         for item in content:
-            section_widget = self._render_section(item)
-            if section_widget:
-                layout.addWidget(section_widget)
+            if isinstance(item, dict) and item.get("type") == "color" and not has_sections:
+                # Compact color rendering for direct color controls
+                item_widget = self._render_color_compact(item)
+            else:
+                item_widget = self._render_section(item, inside_groupbox=False)
+            if item_widget:
+                layout.addWidget(item_widget)
 
-        layout.addStretch()
         return widget
 
-    def _render_section(self, section: dict) -> Optional[QWidget]:
+    def _render_section(self, section: dict, inside_groupbox: bool = False) -> Optional[QWidget]:
         """Render a section (groupbox with controls) or a direct control."""
         if not isinstance(section, dict):
             return None
 
         # If item has a "type", it's a control, not a section
         if section.get("type"):
-            return self._render_control(section)
+            return self._render_control(section, inside_groupbox=inside_groupbox)
 
         label = section.get("label", "")
         show_if = section.get("showIf")
@@ -160,11 +176,13 @@ class CustomUIRenderer(QObject):
             return None
 
         group = QGroupBox(label)
-        layout = QVBoxLayout()
+        layout = QVBoxLayout()  # Vertical layout inside groupboxes for proper alignment
+        layout.setSpacing(4)
+        layout.setContentsMargins(8, 8, 8, 8)
         group.setLayout(layout)
 
         for item in content:
-            control_widget = self._render_section(item)  # Recursively handle nested sections/controls
+            control_widget = self._render_section(item, inside_groupbox=True)  # Controls inside groupbox
             if control_widget:
                 layout.addWidget(control_widget)
 
@@ -174,7 +192,7 @@ class CustomUIRenderer(QObject):
 
         return group
 
-    def _render_control(self, control: dict) -> Optional[QWidget]:
+    def _render_control(self, control: dict, inside_groupbox: bool = False) -> Optional[QWidget]:
         """Render a single control."""
         # Handle non-dict items (e.g., string menu references)
         if not isinstance(control, dict):
@@ -188,12 +206,14 @@ class CustomUIRenderer(QObject):
         # Handle showIf wrapper without type - it's a conditional group
         if show_if and not control_type and content:
             container = QWidget()
-            layout = QVBoxLayout()
+            # Use VBoxLayout inside groupbox for vertical stacking
+            layout = QVBoxLayout() if inside_groupbox else FlowLayout()
+            layout.setSpacing(4 if inside_groupbox else 8)
             layout.setContentsMargins(0, 0, 0, 0)
             container.setLayout(layout)
 
             for item in content:
-                widget = self._render_control(item)
+                widget = self._render_control(item, inside_groupbox=inside_groupbox)
                 if widget:
                     layout.addWidget(widget)
 
@@ -210,17 +230,17 @@ class CustomUIRenderer(QObject):
         widget = None
 
         if control_type == "toggle":
-            widget = self._render_toggle(label, channel, value_id, value_key, control)
+            widget = self._render_toggle(label, channel, value_id, value_key, control, inside_groupbox)
         elif control_type == "range":
-            widget = self._render_range(label, channel, value_id, value_key, control)
+            widget = self._render_range(label, channel, value_id, value_key, control, inside_groupbox)
         elif control_type == "dropdown":
-            widget = self._render_dropdown(label, channel, value_id, value_key, control)
+            widget = self._render_dropdown(label, channel, value_id, value_key, control, inside_groupbox)
         elif control_type == "button":
-            widget = self._render_button(label, channel, value_id, value_key, control)
+            widget = self._render_button(label, channel, value_id, value_key, control, inside_groupbox)
         elif control_type == "color":
-            widget = self._render_color(label, channel, value_id, value_key, control)
+            widget = self._render_color(label, channel, value_id, value_key, control, inside_groupbox)
         elif control_type == "keycode":
-            widget = self._render_keycode(label, channel, value_id, value_key, control)
+            widget = self._render_keycode(label, channel, value_id, value_key, control, inside_groupbox)
 
         if widget and show_if:
             self.show_if_widgets.append((show_if, widget))
@@ -232,13 +252,17 @@ class CustomUIRenderer(QObject):
         return widget
 
     def _render_toggle(self, label: str, channel: int, value_id: int,
-                       value_key: str, control: dict) -> QWidget:
+                       value_key: str, control: dict, inside_groupbox: bool = False) -> QWidget:
         """Render a toggle (checkbox) control."""
         frame = QFrame()
         frame.setObjectName("custom_ui_frame")
-        frame.setStyleSheet("#custom_ui_frame { border: 2px solid transparent; }")
+        if not inside_groupbox:
+            frame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        if inside_groupbox:
+            layout.setContentsMargins(0, 2, 0, 2)
+        else:
+            layout.setContentsMargins(6, 4, 6, 4)
         frame.setLayout(layout)
 
         lbl = QLabel(label)
@@ -269,8 +293,9 @@ class CustomUIRenderer(QObject):
             self.widget_frames[value_key] = frame
 
         layout.addWidget(lbl)
-        layout.addStretch()
+        layout.addSpacing(12)
         layout.addWidget(checkbox)
+        layout.addStretch()
 
         # Store value reference
         self._register_value(value_key, channel, value_id, 1)
@@ -278,18 +303,25 @@ class CustomUIRenderer(QObject):
         return frame
 
     def _render_range(self, label: str, channel: int, value_id: int,
-                      value_key: str, control: dict) -> QWidget:
+                      value_key: str, control: dict, inside_groupbox: bool = False) -> QWidget:
         """Render a range (slider + spinbox) control."""
         frame = QFrame()
         frame.setObjectName("custom_ui_frame")
-        frame.setStyleSheet("#custom_ui_frame { border: 2px solid transparent; }")
+        if not inside_groupbox:
+            frame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
+            frame.setMinimumWidth(350)
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        if inside_groupbox:
+            layout.setContentsMargins(0, 2, 0, 2)
+        else:
+            layout.setContentsMargins(6, 4, 6, 4)
         frame.setLayout(layout)
 
         lbl = QLabel(label)
         slider = QSlider(Qt.Horizontal)
+        slider.setMinimumWidth(120)
         spinbox = QSpinBox()
+        spinbox.setFixedWidth(70)
 
         options = control.get("options", [0, 255])
         min_val = options[0] if len(options) > 0 else 0
@@ -345,13 +377,17 @@ class CustomUIRenderer(QObject):
         return frame
 
     def _render_dropdown(self, label: str, channel: int, value_id: int,
-                         value_key: str, control: dict) -> QWidget:
+                         value_key: str, control: dict, inside_groupbox: bool = False) -> QWidget:
         """Render a dropdown (combobox) control."""
         frame = QFrame()
         frame.setObjectName("custom_ui_frame")
-        frame.setStyleSheet("#custom_ui_frame { border: 2px solid transparent; }")
+        if not inside_groupbox:
+            frame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        if inside_groupbox:
+            layout.setContentsMargins(0, 2, 0, 2)
+        else:
+            layout.setContentsMargins(6, 4, 6, 4)
         frame.setLayout(layout)
 
         lbl = QLabel(label)
@@ -391,8 +427,9 @@ class CustomUIRenderer(QObject):
             self.widget_frames[value_key] = frame
 
         layout.addWidget(lbl)
-        layout.addStretch()
+        layout.addSpacing(12)
         layout.addWidget(combo)
+        layout.addStretch()
 
         # Store value reference
         self._register_value(value_key, channel, value_id, 1)
@@ -400,13 +437,17 @@ class CustomUIRenderer(QObject):
         return frame
 
     def _render_button(self, label: str, channel: int, value_id: int,
-                       value_key: str, control: dict) -> QWidget:
+                       value_key: str, control: dict, inside_groupbox: bool = False) -> QWidget:
         """Render a button control."""
         frame = QFrame()
         frame.setObjectName("custom_ui_frame")
-        frame.setStyleSheet("#custom_ui_frame { border: 2px solid transparent; }")
+        if not inside_groupbox:
+            frame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        if inside_groupbox:
+            layout.setContentsMargins(0, 2, 0, 2)
+        else:
+            layout.setContentsMargins(6, 4, 6, 4)
         frame.setLayout(layout)
 
         button = QPushButton(label)
@@ -426,16 +467,21 @@ class CustomUIRenderer(QObject):
         return frame
 
     def _render_color(self, label: str, channel: int, value_id: int,
-                      value_key: str, control: dict) -> QWidget:
+                      value_key: str, control: dict, inside_groupbox: bool = False) -> QWidget:
         """Render a color picker control (HSV, 2 bytes)."""
         frame = QFrame()
         frame.setObjectName("custom_ui_frame")
-        frame.setStyleSheet("#custom_ui_frame { border: 2px solid transparent; }")
+        if not inside_groupbox:
+            frame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        if inside_groupbox:
+            layout.setContentsMargins(0, 2, 0, 2)
+        else:
+            layout.setContentsMargins(6, 4, 6, 4)
         frame.setLayout(layout)
 
         lbl = QLabel(label)
+        lbl.setMinimumWidth(60)
         color_button = QPushButton()
         color_button.setFixedSize(40, 24)
 
@@ -479,24 +525,104 @@ class CustomUIRenderer(QObject):
             self.widget_frames[value_key] = frame
 
         layout.addWidget(lbl)
-        layout.addStretch()
+        layout.addSpacing(12)
         layout.addWidget(color_button)
+        layout.addStretch()
 
         # Store value reference
         self._register_value(value_key, channel, value_id, 2)
 
         return frame
 
+    def _render_color_compact(self, control: dict) -> Optional[QWidget]:
+        """Render a compact color picker for grid layout (swatch with label below)."""
+        content = control.get("content", [])
+        label = control.get("label", "")
+
+        # Parse content: [id, channel, value_id]
+        value_key = content[0] if content else None
+        channel = content[1] if len(content) > 1 else 0
+        value_id = content[2] if len(content) > 2 else 0
+
+        # Create compact widget with swatch on top, label below
+        container = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(2)
+        container.setLayout(layout)
+
+        color_button = QPushButton()
+        color_button.setFixedSize(36, 28)
+
+        lbl = QLabel(label)
+        lbl.setAlignment(Qt.AlignCenter)
+
+        # Size based on label width, minimum 50
+        label_width = lbl.fontMetrics().horizontalAdvance(label) + 8
+        container_width = max(50, label_width)
+        container.setFixedSize(container_width, 54)
+
+        # Store current HS values
+        hs_state = [0, 0]
+
+        # Load current HSV value
+        current = self._get_value(channel, value_id, 2)
+        hs_state[0] = current & 0xFF
+        hs_state[1] = (current >> 8) & 0xFF
+
+        def update_button_color():
+            color = QColor.fromHsv(int(hs_state[0] * 360 / 255), int(hs_state[1] * 255 / 255), 255)
+            color_button.setStyleSheet(
+                f"background-color: {color.name()}; border: 1px solid gray;"
+            )
+
+        update_button_color()
+
+        def on_click():
+            initial = QColor.fromHsv(int(hs_state[0] * 360 / 255), int(hs_state[1] * 255 / 255), 255)
+            color = QColorDialog.getColor(initial, None, "Select Color")
+            if color.isValid():
+                h, s, v, _ = color.getHsv()
+                hs_state[0] = int(h * 255 / 360)
+                hs_state[1] = int(s * 255 / 255)
+                value = hs_state[0] | (hs_state[1] << 8)
+                self._set_value(channel, value_id, value, 2)
+                update_button_color()
+
+        color_button.clicked.connect(on_click)
+
+        # Register updater for refresh
+        def update_color(value):
+            hs_state[0] = value & 0xFF
+            hs_state[1] = (value >> 8) & 0xFF
+            update_button_color()
+
+        if value_key:
+            self.widget_updaters[value_key] = update_color
+            self.widgets[value_key] = container
+
+        layout.addWidget(color_button, alignment=Qt.AlignCenter)
+        layout.addWidget(lbl)
+
+        # Register value
+        self._register_value(value_key, channel, value_id, 2)
+
+        return container
+
     def _render_keycode(self, label: str, channel: int, value_id: int,
-                        value_key: str, control: dict) -> QWidget:
+                        value_key: str, control: dict, inside_groupbox: bool = False) -> QWidget:
         """Render a keycode selector control."""
         # TODO: Integrate with existing KeyWidget from vial-gui
         # For now, render as a spinbox with keycode value
         frame = QFrame()
         frame.setObjectName("custom_ui_frame")
-        frame.setStyleSheet("#custom_ui_frame { border: 2px solid transparent; }")
+        if not inside_groupbox:
+            frame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        if inside_groupbox:
+            layout.setContentsMargins(0, 2, 0, 2)
+        else:
+            layout.setContentsMargins(6, 4, 6, 4)
         frame.setLayout(layout)
 
         lbl = QLabel(label)
@@ -525,8 +651,9 @@ class CustomUIRenderer(QObject):
             self.widget_frames[value_key] = frame
 
         layout.addWidget(lbl)
-        layout.addStretch()
+        layout.addSpacing(12)
         layout.addWidget(spinbox)
+        layout.addStretch()
 
         # Store value reference
         self._register_value(value_key, channel, value_id, 2)

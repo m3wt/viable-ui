@@ -50,6 +50,7 @@ class MainWindow(QMainWindow):
         self.ui_lock_count = 0
 
         self.settings = QSettings("Viable", "Viable")
+        self.setMinimumSize(400, 300)  # Allow window to shrink small
         if self.settings.value("size", None):
             self.resize(self.settings.value("size"))
         else:
