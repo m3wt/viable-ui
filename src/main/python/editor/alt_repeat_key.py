@@ -32,12 +32,9 @@ class AltRepeatKeyEntryUI(QObject):
         col = 0
         self.index_label = QLabel()
         self.index_label.setStyleSheet("font-size: 9px; color: palette(text);")
-        self.index_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)
+        self.index_label.setAlignment(Qt.AlignCenter)
         self.update_index_label()
         self.container.addWidget(self.index_label, 0, col)
-        col += 1
-
-        # Enable column (no header, just checkbox below)
         col += 1
 
         # Key headers with tooltips
@@ -86,10 +83,10 @@ class AltRepeatKeyEntryUI(QObject):
             self.container.addWidget(lbl, 0, col)
             col += 1
 
-        # Row 1: Controls
-        col = 1  # Skip index column
+        # Row 1: Controls - Enable checkbox under index
+        col = 0
 
-        # Enable checkbox
+        # Enable checkbox under index
         self.enable_chk = QCheckBox()
         self.enable_chk.setToolTip("Enable this alt repeat key entry")
         self.enable_chk.stateChanged.connect(self.on_change_internal)

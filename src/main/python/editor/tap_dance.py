@@ -32,7 +32,7 @@ class TapDanceEntryUI(QObject):
         # Row 0: Index and column headers
         self.index_label = QLabel()
         self.index_label.setStyleSheet("font-size: 9px; color: palette(text);")
-        self.index_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)
+        self.index_label.setAlignment(Qt.AlignCenter)
         self.update_index_label()
         self.container.addWidget(self.index_label, 0, 0)
 
@@ -47,12 +47,12 @@ class TapDanceEntryUI(QObject):
         term_header.setAlignment(Qt.AlignCenter)
         self.container.addWidget(term_header, 0, 5)
 
-        enabled_header = QLabel("On")
-        enabled_header.setStyleSheet("font-size: 9px; color: palette(text);")
-        enabled_header.setAlignment(Qt.AlignCenter)
-        self.container.addWidget(enabled_header, 0, 6)
+        # Row 1: Enable checkbox under index, then keys and tapping term
+        self.enabled_checkbox = QCheckBox()
+        self.enabled_checkbox.setChecked(True)
+        self.enabled_checkbox.stateChanged.connect(self.on_enabled_changed)
+        self.container.addWidget(self.enabled_checkbox, 1, 0, Qt.AlignCenter)
 
-        # Row 1: Keys and tapping term
         self.kc_on_tap = KeyWidget()
         self.kc_on_tap.changed.connect(lambda: self.on_key_changed_at(0))
         self.container.addWidget(self.kc_on_tap, 1, 1)
@@ -80,11 +80,6 @@ class TapDanceEntryUI(QObject):
         self.txt_tapping_term.setFixedWidth(75)
         self.txt_tapping_term.valueChanged.connect(self.on_timing_changed_internal)
         self.container.addWidget(self.txt_tapping_term, 1, 5)
-
-        self.enabled_checkbox = QCheckBox()
-        self.enabled_checkbox.setChecked(True)
-        self.enabled_checkbox.stateChanged.connect(self.on_enabled_changed)
-        self.container.addWidget(self.enabled_checkbox, 1, 6, Qt.AlignCenter)
 
         # Create the widget
         self.widget_container = QWidget()

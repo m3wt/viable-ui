@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 from qtpy.QtCore import Signal, QObject, Qt
 from qtpy.QtWidgets import (QWidget, QSizePolicy, QHBoxLayout, QVBoxLayout, QLabel,
-                             QScrollArea, QPushButton, QCheckBox)
+                             QScrollArea, QPushButton, QCheckBox, QGridLayout)
 
 from change_manager import ChangeManager, LeaderChange
 from widgets.key_widget import KeyWidget
@@ -24,27 +24,43 @@ class LeaderEntryUI(QObject):
         self.all_keys = []  # All keys in order for auto-advance
         self.options = 0x8000  # Default: enabled
 
-        # Main vertical layout
-        self.main_layout = QVBoxLayout()
-        self.main_layout.setSpacing(2)
-        self.main_layout.setContentsMargins(4, 4, 4, 4)
+        # Use grid layout for proper column alignment
+        self.container = QGridLayout()
+        self.container.setSpacing(2)
+        self.container.setContentsMargins(4, 4, 4, 4)
 
-        # Top row: keys
-        self.keys_row = QHBoxLayout()
-        self.keys_row.setSpacing(2)
-
-        # Small superscript-style index number
+        # Row 0: Index and column headers
         self.index_label = QLabel()
-        self.index_label.setStyleSheet("font-size: 9px; color: palette(text); min-width: 20px;")
-        self.index_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        self.index_label.setStyleSheet("font-size: 9px; color: palette(text);")
+        self.index_label.setAlignment(Qt.AlignCenter)
         self.update_index_label()
-        self.keys_row.addWidget(self.index_label)
+        self.container.addWidget(self.index_label, 0, 0)
+
+        # Sequence key headers (columns 1-5)
+        for col in range(5):
+            lbl = QLabel(f"Seq{col + 1}")
+            lbl.setStyleSheet("font-size: 9px; color: palette(text);")
+            lbl.setAlignment(Qt.AlignCenter)
+            self.container.addWidget(lbl, 0, col + 1)
+
+        # Arrow column (6) - no header needed
+        # Output header (column 7)
+        out_header = QLabel("Out")
+        out_header.setStyleSheet("font-size: 9px; color: palette(text);")
+        out_header.setAlignment(Qt.AlignCenter)
+        self.container.addWidget(out_header, 0, 7)
+
+        # Row 1: Enable checkbox under index, then keys
+        self.enabled_checkbox = QCheckBox()
+        self.enabled_checkbox.setChecked(True)
+        self.enabled_checkbox.stateChanged.connect(self.on_enabled_changed)
+        self.container.addWidget(self.enabled_checkbox, 1, 0, Qt.AlignCenter)
 
         # 5 sequence keys
         for x in range(5):
             kc_widget = KeyWidget()
             kc_widget.changed.connect(lambda idx=x: self.on_key_changed_at(idx))
-            self.keys_row.addWidget(kc_widget)
+            self.container.addWidget(kc_widget, 1, x + 1)
             self.kc_sequence.append(kc_widget)
             self.all_keys.append(kc_widget)
 
@@ -52,37 +68,19 @@ class LeaderEntryUI(QObject):
         arrow = QLabel("\u2192")  # ->
         arrow.setStyleSheet("font-size: 16px; color: palette(text);")
         arrow.setAlignment(Qt.AlignCenter)
-        self.keys_row.addWidget(arrow)
+        self.container.addWidget(arrow, 1, 6)
 
         # Output key
         self.kc_output = KeyWidget()
         self.kc_output.changed.connect(lambda: self.on_key_changed_at(5))
-        self.keys_row.addWidget(self.kc_output)
+        self.container.addWidget(self.kc_output, 1, 7)
         self.all_keys.append(self.kc_output)
-
-        self.main_layout.addLayout(self.keys_row)
-
-        # Bottom row: enabled checkbox
-        self.options_row = QHBoxLayout()
-        self.options_row.setSpacing(4)
-
-        self.enabled_label = QLabel("Enabled:")
-        self.enabled_label.setStyleSheet("font-size: 9px; color: palette(text);")
-        self.options_row.addWidget(self.enabled_label)
-
-        self.enabled_checkbox = QCheckBox()
-        self.enabled_checkbox.setChecked(True)
-        self.enabled_checkbox.stateChanged.connect(self.on_enabled_changed)
-        self.options_row.addWidget(self.enabled_checkbox)
-
-        self.options_row.addStretch()
-        self.main_layout.addLayout(self.options_row)
 
         # Create the widget
         self.widget_container = QWidget()
         self.widget_container.setObjectName("leaderEntry")
         self.widget_container.setStyleSheet("#leaderEntry { border: 2px solid transparent; }")
-        self.widget_container.setLayout(self.main_layout)
+        self.widget_container.setLayout(self.container)
         self.widget_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     def update_index_label(self):

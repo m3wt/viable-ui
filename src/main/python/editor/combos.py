@@ -2,7 +2,7 @@
 from qtpy import QtCore
 from qtpy.QtCore import Signal, QObject, Qt
 from qtpy.QtWidgets import (QWidget, QSizePolicy, QHBoxLayout, QVBoxLayout, QLabel,
-                             QScrollArea, QPushButton, QSpinBox, QCheckBox)
+                             QScrollArea, QPushButton, QSpinBox, QCheckBox, QGridLayout)
 
 from change_manager import ChangeManager, ComboChange
 from widgets.key_widget import KeyWidget
@@ -26,27 +26,49 @@ class ComboEntryUI(QObject):
         self.all_keys = []  # All keys in order for auto-advance
         self.custom_combo_term = 0x8000  # Default: enabled, no custom term
 
-        # Main vertical layout for the combo
-        self.main_layout = QVBoxLayout()
-        self.main_layout.setSpacing(2)
-        self.main_layout.setContentsMargins(4, 4, 4, 4)
+        # Use grid layout for proper column alignment
+        self.container = QGridLayout()
+        self.container.setSpacing(2)
+        self.container.setContentsMargins(4, 4, 4, 4)
 
-        # Top row: keys
-        self.keys_row = QHBoxLayout()
-        self.keys_row.setSpacing(2)
-
-        # Small superscript-style index number
+        # Row 0: Index and column headers
         self.index_label = QLabel()
-        self.index_label.setStyleSheet("font-size: 9px; color: palette(text); min-width: 20px;")
-        self.index_label.setAlignment(Qt.AlignRight | Qt.AlignTop)
+        self.index_label.setStyleSheet("font-size: 9px; color: palette(text);")
+        self.index_label.setAlignment(Qt.AlignCenter)
         self.update_index_label()
-        self.keys_row.addWidget(self.index_label)
+        self.container.addWidget(self.index_label, 0, 0)
+
+        # Input key headers (columns 1-4)
+        for col in range(4):
+            lbl = QLabel(f"In{col + 1}")
+            lbl.setStyleSheet("font-size: 9px; color: palette(text);")
+            lbl.setAlignment(Qt.AlignCenter)
+            self.container.addWidget(lbl, 0, col + 1)
+
+        # Arrow column (5) - no header needed
+        # Output header (column 6)
+        out_header = QLabel("Out")
+        out_header.setStyleSheet("font-size: 9px; color: palette(text);")
+        out_header.setAlignment(Qt.AlignCenter)
+        self.container.addWidget(out_header, 0, 6)
+
+        # Term header (column 7)
+        term_header = QLabel("Term")
+        term_header.setStyleSheet("font-size: 9px; color: palette(text);")
+        term_header.setAlignment(Qt.AlignCenter)
+        self.container.addWidget(term_header, 0, 7)
+
+        # Row 1: Enable checkbox under index, then keys and term
+        self.enabled_checkbox = QCheckBox()
+        self.enabled_checkbox.setChecked(True)
+        self.enabled_checkbox.stateChanged.connect(self.on_enabled_changed)
+        self.container.addWidget(self.enabled_checkbox, 1, 0, Qt.AlignCenter)
 
         # 4 input keys
         for x in range(4):
             kc_widget = KeyWidget()
             kc_widget.changed.connect(lambda idx=x: self.on_key_changed_at(idx))
-            self.keys_row.addWidget(kc_widget)
+            self.container.addWidget(kc_widget, 1, x + 1)
             self.kc_inputs.append(kc_widget)
             self.all_keys.append(kc_widget)
 
@@ -54,24 +76,15 @@ class ComboEntryUI(QObject):
         arrow = QLabel("\u2192")  # →
         arrow.setStyleSheet("font-size: 16px; color: palette(text);")
         arrow.setAlignment(Qt.AlignCenter)
-        self.keys_row.addWidget(arrow)
+        self.container.addWidget(arrow, 1, 5)
 
         # Output key
         self.kc_output = KeyWidget()
         self.kc_output.changed.connect(lambda: self.on_key_changed_at(4))
-        self.keys_row.addWidget(self.kc_output)
+        self.container.addWidget(self.kc_output, 1, 6)
         self.all_keys.append(self.kc_output)
 
-        self.main_layout.addLayout(self.keys_row)
-
-        # Bottom row: custom combo term (optional)
-        self.term_row = QHBoxLayout()
-        self.term_row.setSpacing(4)
-
-        self.term_label = QLabel("Term:")
-        self.term_label.setStyleSheet("font-size: 9px; color: palette(text);")
-        self.term_row.addWidget(self.term_label)
-
+        # Term spinbox
         self.term_spinbox = QSpinBox()
         self.term_spinbox.setRange(0, 32767)
         self.term_spinbox.setSuffix(" ms")
@@ -79,25 +92,13 @@ class ComboEntryUI(QObject):
         self.term_spinbox.setToolTip("Custom combo term (0 = use global default)")
         self.term_spinbox.setFixedWidth(80)
         self.term_spinbox.valueChanged.connect(self.on_term_changed)
-        self.term_row.addWidget(self.term_spinbox)
-
-        self.enabled_label = QLabel("On:")
-        self.enabled_label.setStyleSheet("font-size: 9px; color: palette(text);")
-        self.term_row.addWidget(self.enabled_label)
-
-        self.enabled_checkbox = QCheckBox()
-        self.enabled_checkbox.setChecked(True)
-        self.enabled_checkbox.stateChanged.connect(self.on_enabled_changed)
-        self.term_row.addWidget(self.enabled_checkbox)
-
-        self.term_row.addStretch()
-        self.main_layout.addLayout(self.term_row)
+        self.container.addWidget(self.term_spinbox, 1, 7)
 
         # Create the widget
         self.widget_container = QWidget()
         self.widget_container.setObjectName("comboEntry")
         self.widget_container.setStyleSheet("#comboEntry { border: 2px solid transparent; }")
-        self.widget_container.setLayout(self.main_layout)
+        self.widget_container.setLayout(self.container)
         self.widget_container.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     def update_index_label(self):

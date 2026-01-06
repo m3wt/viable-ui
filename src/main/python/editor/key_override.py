@@ -187,43 +187,53 @@ class KeyOverrideEntryUI(QObject):
         self.container.setSpacing(4)
         self.container.setContentsMargins(8, 8, 8, 8)
 
-        # Row 1: Index, enable, trigger → replacement, layers btn, options btn
-        row1 = QHBoxLayout()
-        row1.setSpacing(4)
+        # Top section: grid for index/checkbox and keys
+        top_grid = QGridLayout()
+        top_grid.setSpacing(4)
 
-        # Index label
+        # Row 0: Headers
         self.index_label = QLabel(str(idx + 1))
         self.index_label.setStyleSheet("font-size: 9px; color: palette(text);")
-        self.index_label.setFixedWidth(20)
-        self.index_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        row1.addWidget(self.index_label)
+        self.index_label.setAlignment(Qt.AlignCenter)
+        top_grid.addWidget(self.index_label, 0, 0)
 
-        # Enable checkbox
+        trigger_header = QLabel("Trigger")
+        trigger_header.setStyleSheet("font-size: 9px; color: palette(text);")
+        trigger_header.setAlignment(Qt.AlignCenter)
+        top_grid.addWidget(trigger_header, 0, 1)
+
+        # Column 2 is arrow - no header
+
+        replacement_header = QLabel("Replacement")
+        replacement_header.setStyleSheet("font-size: 9px; color: palette(text);")
+        replacement_header.setAlignment(Qt.AlignCenter)
+        top_grid.addWidget(replacement_header, 0, 3)
+
+        # Row 1: Enable checkbox under index, then keys
         self.enable_chk = QCheckBox()
         self.enable_chk.setToolTip("Enable this key override")
         self.enable_chk.stateChanged.connect(self.on_change_internal)
-        row1.addWidget(self.enable_chk)
+        top_grid.addWidget(self.enable_chk, 1, 0, Qt.AlignCenter)
 
         # Trigger key
         self.trigger_key = KeyWidget()
         self.trigger_key.changed.connect(lambda: self.on_key_changed_at(0))
-        row1.addWidget(self.trigger_key)
+        top_grid.addWidget(self.trigger_key, 1, 1)
         self.all_keys.append(self.trigger_key)
 
         # Arrow
         arrow = QLabel("→")
         arrow.setStyleSheet("font-size: 14px; color: palette(text);")
-        row1.addWidget(arrow)
+        arrow.setAlignment(Qt.AlignCenter)
+        top_grid.addWidget(arrow, 1, 2)
 
         # Replacement key
         self.replacement_key = KeyWidget()
         self.replacement_key.changed.connect(lambda: self.on_key_changed_at(1))
-        row1.addWidget(self.replacement_key)
+        top_grid.addWidget(self.replacement_key, 1, 3)
         self.all_keys.append(self.replacement_key)
 
-        row1.addSpacing(20)
-
-        # Layers and Options stacked vertically
+        # Layers and Options buttons (span both rows)
         buttons_layout = QVBoxLayout()
         buttons_layout.setSpacing(2)
         buttons_layout.setContentsMargins(0, 0, 0, 0)
@@ -254,9 +264,11 @@ class KeyOverrideEntryUI(QObject):
             self.options_btn.setMenu(self.options_popup)
         buttons_layout.addWidget(self.options_btn)
 
-        row1.addLayout(buttons_layout)
+        buttons_widget = QWidget()
+        buttons_widget.setLayout(buttons_layout)
+        top_grid.addWidget(buttons_widget, 0, 4, 2, 1)  # Span 2 rows
 
-        self.container.addLayout(row1)
+        self.container.addLayout(top_grid)
 
         # Mod grid - header row + 3 mod rows in a single grid for alignment
         mod_grid = QGridLayout()
