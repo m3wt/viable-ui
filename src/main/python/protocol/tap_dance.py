@@ -84,14 +84,51 @@ class ProtocolTapDance(BaseProtocol):
         return True
 
     def save_tap_dance(self):
-        """Save tap dance entries for layout file."""
-        return [
-            (entry[0], entry[1], entry[2], entry[3], entry[4])
-            for entry in self.tap_dance_entries
-        ]
+        """Save tap dance entries for layout file (.viable format)."""
+        result = []
+        for entry in self.tap_dance_entries:
+            term_raw = entry[4]
+            result.append({
+                "on": bool(term_raw & 0x8000),
+                "on_tap": entry[0],
+                "on_hold": entry[1],
+                "on_double_tap": entry[2],
+                "on_tap_hold": entry[3],
+                "tapping_term": term_raw & 0x7FFF
+            })
+        return result
 
-    def restore_tap_dance(self, data):
-        """Restore tap dance entries from layout file."""
+    def restore_tap_dance(self, data, is_vil=False):
+        """Restore tap dance entries from layout file.
+
+        Args:
+            data: List of tap dance entries (dict for .viable, tuple/list for .vil)
+            is_vil: If True, assume entries are enabled when 'on' is not specified
+        """
         for x, e in enumerate(data):
-            if x < self.tap_dance_count:
-                self.tap_dance_set(x, e)
+            if x >= self.tap_dance_count:
+                break
+
+            if isinstance(e, dict):
+                # New .viable format with explicit fields
+                on = e.get("on", True if is_vil else False)
+                term = e.get("tapping_term", 0) & 0x7FFF
+                if on:
+                    term |= 0x8000
+                entry = (
+                    e.get("on_tap", "KC_NO"),
+                    e.get("on_hold", "KC_NO"),
+                    e.get("on_double_tap", "KC_NO"),
+                    e.get("on_tap_hold", "KC_NO"),
+                    term
+                )
+            else:
+                # Old array format (from .vil files)
+                # For .vil, assume enabled since vial-gui has no enable/disable
+                if is_vil and len(e) == 5:
+                    term = (e[4] & 0x7FFF) | 0x8000  # Force enabled
+                    entry = (e[0], e[1], e[2], e[3], term)
+                else:
+                    entry = tuple(e)
+
+            self.tap_dance_set(x, entry)

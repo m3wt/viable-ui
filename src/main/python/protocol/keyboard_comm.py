@@ -493,8 +493,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
         return json.dumps(data).encode("utf-8")
 
-    def restore_layout(self, data):
+    def restore_layout(self, data, filename=None):
         """ Restores saved layout """
+
+        # Determine if this is a .vil file (from vial-gui)
+        is_vil = False
+        if filename:
+            is_vil = filename.lower().endswith(".vil")
 
         data = json.loads(data.decode("utf-8"))
 
@@ -539,11 +544,11 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.set_layout_options(data["layout_options"])
         self.restore_macros(data.get("macro"))
 
-        self.restore_tap_dance(data.get("tap_dance", []))
-        self.restore_combo(data.get("combo", []))
+        self.restore_tap_dance(data.get("tap_dance", []), is_vil=is_vil)
+        self.restore_combo(data.get("combo", []), is_vil=is_vil)
         self.restore_key_override(data.get("key_override", []))
         self.restore_alt_repeat_key(data.get("alt_repeat_key", []))
-        self.restore_leader(data.get("leader", []))
+        self.restore_leader(data.get("leader", []), is_vil=is_vil)
         self.restore_oneshot(data.get("oneshot"))
 
         for qsid, value in data.get("settings", dict()).items():

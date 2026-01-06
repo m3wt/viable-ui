@@ -48,22 +48,38 @@ class AltRepeatKeyEntry:
         return isinstance(other, AltRepeatKeyEntry) and self.serialize() == other.serialize()
 
     def save(self):
-        """ Serializes into Vial layout file """
-
+        """Serializes into layout file format (.viable format)."""
+        # Extract enabled to top-level, store options without enable bit
+        options_without_enable = self.options.serialize() & 0x07  # bits 0-2 only
         return {
+            "on": self.options.enabled,
             "keycode": self.keycode,
             "alt_keycode": self.alt_keycode,
             "allowed_mods": self.allowed_mods,
-            "options": self.options.serialize()
+            "options": options_without_enable
         }
 
     def restore(self, data):
-        """ Restores from a Vial layout file """
+        """Restores from layout file format.
 
+        Args:
+            data: Dict with alt repeat key fields
+        """
         self.keycode = data["keycode"]
         self.alt_keycode = data["alt_keycode"]
         self.allowed_mods = data["allowed_mods"]
-        self.options = AltRepeatKeyOptions(data["options"])
+
+        # Handle options and enabled flag
+        options_raw = data.get("options", 0)
+        if "on" in data:
+            # New .viable format with explicit 'on' field
+            if data["on"]:
+                options_raw |= 0x08  # bit 3
+            else:
+                options_raw &= 0x07
+        # else: use options as-is (.vil already has enable bit in options)
+
+        self.options = AltRepeatKeyOptions(options_raw)
 
 
 class ProtocolAltRepeatKey(BaseProtocol):

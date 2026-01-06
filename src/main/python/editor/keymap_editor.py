@@ -273,7 +273,7 @@ class KeymapEditor(BasicEditor):
     def save_layout(self):
         return self.keyboard.save_layout()
 
-    def restore_layout(self, data):
+    def restore_layout(self, data, filename=None):
         if json.loads(data.decode("utf-8")).get("uid") != self.keyboard.keyboard_id:
             ret = QMessageBox.question(self.widget(), "",
                                        tr("KeymapEditor", "Saved keymap belongs to a different keyboard,"
@@ -281,7 +281,7 @@ class KeymapEditor(BasicEditor):
                                        QMessageBox.Yes | QMessageBox.No)
             if ret != QMessageBox.Yes:
                 return
-        self.keyboard.restore_layout(data)
+        self.keyboard.restore_layout(data, filename=filename)
         self.refresh_layer_display()
 
     def on_any_keycode(self):

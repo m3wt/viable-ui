@@ -88,19 +88,26 @@ class KeyOverrideEntry:
         return isinstance(other, KeyOverrideEntry) and self.serialize() == other.serialize()
 
     def save(self):
-        """Serializes into layout file format."""
+        """Serializes into layout file format (.viable format)."""
+        # Extract enabled to top-level, store options without enable bit
+        options_without_enable = self.options.serialize() & 0x7F
         return {
+            "on": self.options.enabled,
             "trigger": self.trigger,
             "replacement": self.replacement,
             "layers": self.layers,
             "trigger_mods": self.trigger_mods,
             "negative_mod_mask": self.negative_mod_mask,
             "suppressed_mods": self.suppressed_mods,
-            "options": self.options.serialize()
+            "options": options_without_enable
         }
 
     def restore(self, data):
-        """Restores from layout file format."""
+        """Restores from layout file format.
+
+        Args:
+            data: Dict with key override fields
+        """
         self.trigger = data["trigger"]
         self.replacement = data["replacement"]
         # Handle old 16-bit layer format
@@ -113,7 +120,18 @@ class KeyOverrideEntry:
         self.trigger_mods = data["trigger_mods"]
         self.negative_mod_mask = data["negative_mod_mask"]
         self.suppressed_mods = data["suppressed_mods"]
-        self.options = KeyOverrideOptions(data["options"])
+
+        # Handle options and enabled flag
+        options_raw = data.get("options", 0)
+        if "on" in data:
+            # New .viable format with explicit 'on' field
+            if data["on"]:
+                options_raw |= 0x80
+            else:
+                options_raw &= 0x7F
+        # else: use options as-is (.vil already has enable bit in options)
+
+        self.options = KeyOverrideOptions(options_raw)
 
 
 class ProtocolKeyOverride(BaseProtocol):
@@ -168,7 +186,7 @@ class ProtocolKeyOverride(BaseProtocol):
         return True
 
     def save_key_override(self):
-        """Save key override entries for layout file."""
+        """Save key override entries for layout file (.viable format)."""
         return [e.save() for e in self.key_override_entries]
 
     def restore_key_override(self, data):

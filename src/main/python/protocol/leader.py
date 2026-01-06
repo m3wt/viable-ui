@@ -87,14 +87,50 @@ class ProtocolLeader(BaseProtocol):
         return True
 
     def save_leader(self):
-        """Save leader entries for layout file."""
-        return [
-            (entry[0], entry[1], entry[2], entry[3], entry[4], entry[5], entry[6])
-            for entry in self.leader_entries
-        ]
+        """Save leader entries for layout file (.viable format)."""
+        result = []
+        for entry in self.leader_entries:
+            options_raw = entry[6]
+            result.append({
+                "on": bool(options_raw & 0x8000),
+                "sequence": [entry[0], entry[1], entry[2], entry[3], entry[4]],
+                "output": entry[5]
+            })
+        return result
 
-    def restore_leader(self, data):
-        """Restore leader entries from layout file."""
+    def restore_leader(self, data, is_vil=False):
+        """Restore leader entries from layout file.
+
+        Args:
+            data: List of leader entries (dict for .viable, tuple/list for old format)
+            is_vil: If True, assume entries are enabled when 'on' is not specified
+        """
         for x, e in enumerate(data):
-            if x < self.leader_count:
-                self.leader_set(x, e)
+            if x >= self.leader_count:
+                break
+
+            if isinstance(e, dict):
+                # New .viable format with explicit fields
+                on = e.get("on", True if is_vil else False)
+                options = 0x8000 if on else 0
+                seq = e.get("sequence", ["KC_NO", "KC_NO", "KC_NO", "KC_NO", "KC_NO"])
+                entry = (
+                    seq[0] if len(seq) > 0 else "KC_NO",
+                    seq[1] if len(seq) > 1 else "KC_NO",
+                    seq[2] if len(seq) > 2 else "KC_NO",
+                    seq[3] if len(seq) > 3 else "KC_NO",
+                    seq[4] if len(seq) > 4 else "KC_NO",
+                    e.get("output", "KC_NO"),
+                    options
+                )
+            else:
+                # Old array format
+                # Leader is a Viable extension, so old format already has options
+                if is_vil and len(e) == 7:
+                    # Force enabled for .vil
+                    options = (e[6] & 0x7FFF) | 0x8000
+                    entry = (e[0], e[1], e[2], e[3], e[4], e[5], options)
+                else:
+                    entry = tuple(e)
+
+            self.leader_set(x, entry)

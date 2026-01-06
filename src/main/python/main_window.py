@@ -312,11 +312,12 @@ class MainWindow(QMainWindow):
             dialog.setAcceptMode(QFileDialog.AcceptOpen)
             dialog.setNameFilters(["Viable layout (*.viable)", "Vial layout (*.vil)", "All files (*)"])
             if dialog.exec() == QDialog.Accepted:
-                with open(dialog.selectedFiles()[0], "rb") as inf:
+                filename = dialog.selectedFiles()[0]
+                with open(filename, "rb") as inf:
                     data = inf.read()
                 # Clear pending changes before loading - file load overwrites everything
                 ChangeManager.instance().clear()
-                self.keymap_editor.restore_layout(data)
+                self.keymap_editor.restore_layout(data, filename=filename)
                 self.rebuild()
 
     def on_layout_save(self):

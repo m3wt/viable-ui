@@ -84,17 +84,55 @@ class ProtocolCombo(BaseProtocol):
         return True
 
     def save_combo(self):
-        """Save combo entries for layout file."""
-        return [
-            (entry[0], entry[1], entry[2], entry[3], entry[4], entry[5])
-            for entry in self.combo_entries
-        ]
+        """Save combo entries for layout file (.viable format)."""
+        result = []
+        for entry in self.combo_entries:
+            term_raw = entry[5]
+            result.append({
+                "on": bool(term_raw & 0x8000),
+                "keys": [entry[0], entry[1], entry[2], entry[3]],
+                "output": entry[4],
+                "combo_term": term_raw & 0x7FFF
+            })
+        return result
 
-    def restore_combo(self, data):
-        """Restore combo entries from layout file."""
+    def restore_combo(self, data, is_vil=False):
+        """Restore combo entries from layout file.
+
+        Args:
+            data: List of combo entries (dict for .viable, tuple/list for .vil)
+            is_vil: If True, assume entries are enabled when 'on' is not specified
+        """
         for x, e in enumerate(data):
-            if x < self.combo_count:
-                # Handle old 5-element format (without custom_combo_term)
+            if x >= self.combo_count:
+                break
+
+            if isinstance(e, dict):
+                # New .viable format with explicit fields
+                on = e.get("on", True if is_vil else False)
+                term = e.get("combo_term", 0) & 0x7FFF
+                if on:
+                    term |= 0x8000
+                keys = e.get("keys", ["KC_NO", "KC_NO", "KC_NO", "KC_NO"])
+                entry = (
+                    keys[0] if len(keys) > 0 else "KC_NO",
+                    keys[1] if len(keys) > 1 else "KC_NO",
+                    keys[2] if len(keys) > 2 else "KC_NO",
+                    keys[3] if len(keys) > 3 else "KC_NO",
+                    e.get("output", "KC_NO"),
+                    term
+                )
+            else:
+                # Old array format (from .vil files)
                 if len(e) == 5:
-                    e = list(e) + [0x8000]  # Add default enabled, no custom term
-                self.combo_set(x, e)
+                    # Old 5-element format without combo_term
+                    # For .vil, assume enabled since vial-gui has no enable/disable
+                    entry = (e[0], e[1], e[2], e[3], e[4], 0x8000)
+                elif is_vil and len(e) == 6:
+                    # 6-element format but from .vil - force enabled
+                    term = (e[5] & 0x7FFF) | 0x8000
+                    entry = (e[0], e[1], e[2], e[3], e[4], term)
+                else:
+                    entry = tuple(e)
+
+            self.combo_set(x, entry)
