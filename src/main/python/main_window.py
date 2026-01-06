@@ -67,6 +67,8 @@ class MainWindow(QMainWindow):
         themes.Theme.set_theme(self.get_theme())
 
         self.combobox_devices = QComboBox()
+        self.combobox_devices.setMinimumWidth(120)
+        self.combobox_devices.setSizeAdjustPolicy(QComboBox.AdjustToContents)
         self.combobox_devices.currentIndexChanged.connect(self.on_device_selected)
 
         self.btn_refresh_devices = QToolButton()
