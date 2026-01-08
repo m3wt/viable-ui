@@ -155,27 +155,6 @@ static PyObject * vialglue_save_layout(PyObject *self, PyObject *args) {
     return PyLong_FromLong(0);
 }
 
-static PyObject * vialglue_save_svalboard_profile(PyObject *self, PyObject *args) {
-    const uint8_t *data;
-
-    if (!PyArg_ParseTuple(args, "y", &data))
-        return NULL;
-
-    EM_ASM({
-        postMessage({cmd: "save_svalboard_profile", layout: UTF8ToString($0)});
-    }, data);
-
-    return PyLong_FromLong(0);
-}
-
-static PyObject * vialglue_load_svalboard_profile(PyObject *self, PyObject *args) {
-    EM_ASM({
-        postMessage({cmd: "load_svalboard_profile"});
-    });
-
-    return PyLong_FromLong(0);
-}
-
 static PyObject* vialglue_fatal_error(PyObject *self, PyObject *args) {
     const char *msg;
 
@@ -213,8 +192,6 @@ static PyMethodDef VialglueMethods[] = {
     {"get_device_desc",  vialglue_get_device_desc, METH_VARARGS, ""},
     {"load_layout",  vialglue_load_layout, METH_VARARGS, ""},
     {"save_layout",  vialglue_save_layout, METH_VARARGS, ""},
-    {"save_svalboard_profile",  vialglue_save_svalboard_profile, METH_VARARGS, ""},
-    {"load_svalboard_profile",  vialglue_load_svalboard_profile, METH_VARARGS, ""},
     {"fatal_error",  vialglue_fatal_error, METH_VARARGS, ""},
     {"storage_set",  vialglue_storage_set, METH_VARARGS, ""},
     {NULL, NULL, 0, NULL}

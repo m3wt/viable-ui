@@ -351,67 +351,6 @@ class QmkBitChange(Change):
         return f"QmkBitChange(qsid={self.qsid}, bit={self.bit}, {self.old_value}->{self.new_value})"
 
 
-class SvalboardSettingChange(Change):
-    """Change to a single Svalboard setting."""
-
-    def __init__(self, setting_name: str, old_value, new_value):
-        self.setting_name = setting_name
-        self.old_value = old_value
-        self.new_value = new_value
-
-    def key(self) -> Tuple:
-        return ('svalboard', self.setting_name)
-
-    def apply(self, keyboard) -> bool:
-        # Get current settings, update this one, send all
-        settings = keyboard.sval_settings.copy()
-        settings[self.setting_name] = self.new_value
-        return keyboard._commit_svalboard_settings(settings)
-
-    def revert(self, keyboard) -> bool:
-        settings = keyboard.sval_settings.copy()
-        settings[self.setting_name] = self.old_value
-        return keyboard._commit_svalboard_settings(settings)
-
-    def restore_local(self, keyboard, use_old: bool) -> None:
-        value = self.old_value if use_old else self.new_value
-        if hasattr(keyboard, 'sval_settings'):
-            keyboard.sval_settings[self.setting_name] = value
-
-    def __repr__(self):
-        return f"SvalboardSettingChange({self.setting_name}, {self.old_value}->{self.new_value})"
-
-
-class SvalboardLayerColorChange(Change):
-    """Change to a Svalboard layer color (h, s only - firmware controls V)."""
-
-    def __init__(self, layer: int, old_hs: Tuple[int, int], new_hs: Tuple[int, int]):
-        self.layer = layer
-        self.old_value = old_hs
-        self.new_value = new_hs
-
-    def key(self) -> Tuple:
-        return ('svalboard_layer_color', self.layer)
-
-    def apply(self, keyboard) -> bool:
-        return keyboard._commit_svalboard_layer_color(self.layer, self.new_value)
-
-    def revert(self, keyboard) -> bool:
-        return keyboard._commit_svalboard_layer_color(self.layer, self.old_value)
-
-    def restore_local(self, keyboard, use_old: bool) -> None:
-        value = self.old_value if use_old else self.new_value
-        if hasattr(keyboard, 'sval_layer_colors'):
-            keyboard.sval_layer_colors[self.layer] = value
-
-    def merge(self, other: 'SvalboardLayerColorChange') -> bool:
-        self.new_value = other.new_value
-        return True
-
-    def __repr__(self):
-        return f"SvalboardLayerColorChange(layer={self.layer}, {self.old_value}->{self.new_value})"
-
-
 class CustomValueChange(Change):
     """Change to a VIA custom value (keyboard-specific settings)."""
 

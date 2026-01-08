@@ -23,7 +23,6 @@ from protocol.dynamic import ProtocolDynamic
 from protocol.key_override import ProtocolKeyOverride
 from protocol.leader import ProtocolLeader
 from protocol.macro import ProtocolMacro
-from protocol.svalboard import ProtocolSvalboard
 from protocol.tap_dance import ProtocolTapDance
 from protocol.viable import ProtocolViable
 from protocol.client_wrapper import ClientWrapper
@@ -38,7 +37,7 @@ class ProtocolError(Exception):
     pass
 
 
-class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride, ProtocolAltRepeatKey, ProtocolLeader, ProtocolViable, ProtocolSvalboard):
+class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride, ProtocolAltRepeatKey, ProtocolLeader, ProtocolViable):
     """ Low-level communication with a vial-enabled keyboard """
 
     def __init__(self, dev, usb_send=hid_send):
@@ -114,7 +113,6 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.reload_key_override()
         self.reload_alt_repeat_key()
         self.reload_leader()
-        self.reload_svalboard()
 
     def reload_layers(self):
         """ Get how many layers the keyboard has """
@@ -490,6 +488,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         data["leader"] = self.save_leader()
         data["oneshot"] = self.save_oneshot()
         data["settings"] = self.settings
+        data["custom_values"] = self.save_custom_values()
 
         return json.dumps(data).encode("utf-8")
 
@@ -557,6 +556,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             qsid = int(qsid)
             if QmkSettings.is_qsid_supported(qsid):
                 self.qmk_settings_set(qsid, value)
+
+        self.restore_custom_values(data.get("custom_values", []))
 
     def reset(self):
         self.via_send(struct.pack("B", 0xB))
@@ -720,3 +721,89 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             return True
         except Exception:
             return False
+
+    def _walk_custom_ui(self, callback):
+        """
+        Walk the custom_ui definition and call callback for each control with content.
+
+        callback(key, channel, value_id, control) is called for each control.
+        """
+        from ui.common_menus import resolve_common_menu
+
+        def walk_item(item):
+            if isinstance(item, str):
+                # Common menu reference
+                resolved = resolve_common_menu(item)
+                if resolved:
+                    walk_item(resolved)
+                return
+
+            if not isinstance(item, dict):
+                return
+
+            # Check if this item has content with key/channel/value_id
+            content = item.get("content", [])
+            if isinstance(content, list) and len(content) >= 3 and isinstance(content[0], str):
+                key, channel, value_id = content[0], content[1], content[2]
+                callback(key, channel, value_id, item)
+            elif isinstance(content, list):
+                # Recurse into nested content (for sections/groups)
+                for child in content:
+                    walk_item(child)
+
+            # Recurse into menus
+            for menu in item.get("menus", []):
+                walk_item(menu)
+
+        ui = self.custom_ui
+        if ui:
+            for menu in ui.get("menus", []):
+                walk_item(menu)
+
+    def save_custom_values(self):
+        """Save all custom_ui values for layout file."""
+        result = []
+
+        def collect_value(key, channel, value_id, control):
+            try:
+                data = self.custom_value_get(channel, value_id)
+                if data:
+                    result.append({"key": key, "data": list(data)})
+            except Exception:
+                pass  # Skip values that can't be read
+
+        self._walk_custom_ui(collect_value)
+        return result
+
+    def restore_custom_values(self, saved_values):
+        """Restore custom_ui values from layout file."""
+        if not saved_values:
+            return
+
+        # Build key -> saved data lookup
+        saved_lookup = {entry["key"]: bytes(entry["data"]) for entry in saved_values}
+
+        # Track which channels need saving
+        channels_to_save = set()
+
+        def apply_value(key, channel, value_id, control):
+            if key in saved_lookup:
+                data = saved_lookup[key]
+                try:
+                    self.custom_value_set(channel, value_id, data)
+                    channels_to_save.add(channel)
+                    # Update cache
+                    if not hasattr(self, 'custom_values'):
+                        self.custom_values = {}
+                    self.custom_values[(channel, value_id)] = data
+                except Exception:
+                    pass  # Skip values that can't be set
+
+        self._walk_custom_ui(apply_value)
+
+        # Save all affected channels to EEPROM
+        for channel in channels_to_save:
+            try:
+                self.custom_value_save(channel)
+            except Exception:
+                pass

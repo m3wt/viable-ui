@@ -149,10 +149,6 @@
                 loadLayout();
             } else if (e.data.cmd == "save_layout") {
                 saveLayout(e.data.layout);
-            } else if (e.data.cmd == "save_svalboard_profile") {
-                saveSvalboardProfile(e.data.layout);
-            } else if (e.data.cmd == "load_svalboard_profile") {
-                loadSvalboardProfile();
             } else if (e.data.cmd == "fatal_error") {
                 alert(e.data.msg);
             } else if (e.data.cmd == "storage_set") {
@@ -163,8 +159,8 @@
         const FILE_OPTIONS = {
             types: [
                 {
-                    description: "Vial layout",
-                    accept: { "application/json": [".vil"] },
+                    description: "Viable layout",
+                    accept: { "application/json": [".viable", ".vil"] },
                 },
             ],
             excludeAcceptAllOption: false,

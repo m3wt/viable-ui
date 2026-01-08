@@ -55,9 +55,6 @@ VIAL_PROTOCOL_QMK_SETTINGS = 4
 # When did we get support for 2-byte macros
 VIAL_PROTOCOL_EXT_MACROS = 5
 
-# Svalboard settings now use VIA custom keyboard values
-# Value IDs defined in protocol/svalboard.py (must match firmware)
-
 # Viable protocol v2 (0xDF - Dynamic Features)
 # Replaces 0xFE (Vial) for dynamic features
 VIABLE_PREFIX = 0xDF

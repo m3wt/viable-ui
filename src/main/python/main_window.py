@@ -4,9 +4,9 @@ import platform
 from json import JSONDecodeError
 
 from qtpy.QtCore import Qt, QSettings, QStandardPaths, QTimer, QRect, qVersion
-from qtpy.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor, QFont, QAction, QActionGroup
+from qtpy.QtGui import QPalette, QIcon, QAction, QActionGroup
 from qtpy.QtWidgets import QWidget, QComboBox, QToolButton, QHBoxLayout, QVBoxLayout, QMainWindow, \
-    QFileDialog, QDialog, QTabWidget, QMessageBox, QLabel, QApplication, QSystemTrayIcon
+    QFileDialog, QDialog, QTabWidget, QMessageBox, QLabel, QApplication
 
 import json
 import os
@@ -144,20 +144,6 @@ class MainWindow(QMainWindow):
         w.setLayout(layout)
         self.setCentralWidget(w)
 
-        # System tray icon for layer indicator (not on web)
-        # Initialize before init_menu() since menu references tray_icon
-        self.tray_icon = None
-        self.tray_layer_icons = {}
-        self.tray_current_layer = -1
-        self.tray_icon_enabled = self.settings.value("tray_icon_enabled", True, bool)
-        if sys.platform != "emscripten" and QSystemTrayIcon.isSystemTrayAvailable():
-            self.tray_icon = QSystemTrayIcon(self)
-            self._init_layer_icons()
-            # Poll for layer changes every 200ms
-            self.layer_poll_timer = QTimer()
-            self.layer_poll_timer.timeout.connect(self._poll_layer)
-            self.layer_poll_timer.start(200)
-
         self.init_menu()
 
         self.autorefresh = Autorefresh()
@@ -221,11 +207,6 @@ class MainWindow(QMainWindow):
             file_menu.addAction(sideload_json_act)
             file_menu.addAction(download_via_stack_act)
             file_menu.addAction(load_dummy_act)
-            if self.tray_icon is not None:
-                file_menu.addSeparator()
-                self.tray_icon_act = QAction(self._tray_icon_label(), self)
-                self.tray_icon_act.triggered.connect(self.toggle_tray_icon)
-                file_menu.addAction(self.tray_icon_act)
             file_menu.addSeparator()
             file_menu.addAction(exit_act)
 
@@ -313,6 +294,7 @@ class MainWindow(QMainWindow):
             dialog = QFileDialog()
             dialog.setDefaultSuffix("viable")
             dialog.setAcceptMode(QFileDialog.AcceptOpen)
+            dialog.setFileMode(QFileDialog.ExistingFile)
             dialog.setNameFilters(["Viable layout (*.viable)", "Vial layout (*.vil)", "All files (*)"])
             if dialog.exec() == QDialog.Accepted:
                 filename = dialog.selectedFiles()[0]
@@ -388,19 +370,6 @@ class MainWindow(QMainWindow):
             if (keyboard_id in EXAMPLE_KEYBOARDS) or ((keyboard_id & 0xFFFFFFFFFFFFFF) == EXAMPLE_KEYBOARD_PREFIX):
                 QMessageBox.warning(self, "", "An example keyboard UID was detected.\n"
                                               "Please change your keyboard UID to be unique before you ship!")
-            # Check for newer Svalboard firmware than GUI supports
-            keyboard = self.autorefresh.current_device.keyboard
-            if hasattr(keyboard, 'sval_protocol_too_new') and keyboard.sval_protocol_too_new:
-                msg = QMessageBox(self)
-                msg.setIcon(QMessageBox.Warning)
-                msg.setWindowTitle("")
-                msg.setText("Your Svalboard firmware is newer than this GUI supports.<br>"
-                            "Svalboard features are disabled.<br><br>"
-                            "Please update the GUI from "
-                            "<a href='https://github.com/viable-kb/gui'>github.com/viable-kb/gui</a>")
-                msg.setTextFormat(Qt.RichText)
-                msg.setTextInteractionFlags(Qt.TextBrowserInteraction)
-                msg.exec()
         else:
             cm.set_keyboard(None)
 
@@ -432,11 +401,6 @@ class MainWindow(QMainWindow):
                   self.tap_dance, self.combos, self.leader, self.key_override, self.alt_repeat_key,
                   self.qmk_settings, self.matrix_tester, self.rgb_configurator, self.custom_ui_editor]:
             e.rebuild(self.autorefresh.current_device)
-
-        # Update layer icons from keyboard colors (Svalboard or defaults)
-        if self.tray_icon is not None:
-            self._update_layer_icons_from_keyboard()
-            self.tray_current_layer = -1  # Force icon update on next poll
 
     def refresh_tabs(self):
         self.tabs.clear()
@@ -704,108 +668,6 @@ class MainWindow(QMainWindow):
                                 self.keymap_editor.switch_layer(layer)
                         return
 
-    # Default layer colors (HSV) for non-Svalboard keyboards
-    DEFAULT_LAYER_COLORS = [
-        (85, 255, 255),   # Green
-        (21, 255, 255),   # Orange
-        (149, 255, 255),  # Azure
-        (11, 176, 255),   # Coral
-        (43, 255, 255),   # Yellow
-        (128, 255, 128),  # Teal
-        (0, 255, 255),    # Red
-        (0, 255, 255),    # Red
-        (234, 255, 255),  # Pink
-        (191, 255, 128),  # Purple
-        (11, 176, 255),   # Coral
-        (106, 255, 255),  # Spring Green
-        (128, 255, 128),  # Teal
-        (128, 255, 255),  # Turquoise
-        (43, 255, 255),   # Yellow
-        (213, 255, 255),  # Magenta
-    ]
-
-    def _init_layer_icons(self):
-        """Initialize default layer icons using default colors"""
-        for layer in range(16):
-            h, s, v = self.DEFAULT_LAYER_COLORS[layer]
-            self.tray_layer_icons[layer] = self._create_layer_icon(layer, h, s, v)
-
-    def _create_layer_icon(self, layer, h, s, v):
-        """Create a 32x32 icon with layer number on colored background"""
-        pixmap = QPixmap(32, 32)
-        # Convert HSV to RGB
-        color = QColor.fromHsv(h, s, v)
-        pixmap.fill(color)
-
-        painter = QPainter(pixmap)
-        # Use contrasting text color
-        brightness = (color.red() * 299 + color.green() * 587 + color.blue() * 114) / 1000
-        text_color = Qt.black if brightness > 128 else Qt.white
-        painter.setPen(text_color)
-        font = QFont()
-        font.setPixelSize(20)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(pixmap.rect(), Qt.AlignCenter, str(layer))
-        painter.end()
-
-        return QIcon(pixmap)
-
-    def _update_layer_icons_from_keyboard(self):
-        """Update layer icons using colors from connected keyboard"""
-        if not isinstance(self.autorefresh.current_device, VialKeyboard):
-            return
-        keyboard = self.autorefresh.current_device.keyboard
-        if hasattr(keyboard, 'sval_layer_colors') and keyboard.sval_layer_colors:
-            for layer, (h, s) in enumerate(keyboard.sval_layer_colors):
-                # V defaults to 255 for display (firmware controls actual brightness)
-                self.tray_layer_icons[layer] = self._create_layer_icon(layer, h, s, 255)
-
-    def _tray_icon_label(self):
-        """Get menu label with checkbox indicator"""
-        check = "☑ " if self.tray_icon_enabled else "☐ "
-        return check + tr("Menu", "Show Tray Icon")
-
-    def toggle_tray_icon(self):
-        """Toggle tray icon visibility"""
-        self.tray_icon_enabled = not self.tray_icon_enabled
-        self.settings.setValue("tray_icon_enabled", self.tray_icon_enabled)
-        self.tray_icon_act.setText(self._tray_icon_label())
-        if not self.tray_icon_enabled and self.tray_icon is not None:
-            self.tray_icon.hide()
-            self.tray_current_layer = -1
-
-    def _poll_layer(self):
-        """Poll the keyboard for current layer and update tray icon"""
-        if self.tray_icon is None or not self.tray_icon_enabled:
-            return
-
-        if not isinstance(self.autorefresh.current_device, VialKeyboard):
-            # No keyboard connected - hide tray icon
-            if self.tray_icon.isVisible():
-                self.tray_icon.hide()
-            self.tray_current_layer = -1
-            return
-
-        keyboard = self.autorefresh.current_device.keyboard
-        if not hasattr(keyboard, 'sval_get_current_layer'):
-            # Keyboard doesn't support layer query
-            if self.tray_icon.isVisible():
-                self.tray_icon.hide()
-            return
-
-        layer = keyboard.sval_get_current_layer()
-        if layer is None:
-            return
-
-        if layer != self.tray_current_layer:
-            self.tray_current_layer = layer
-            if layer in self.tray_layer_icons:
-                self.tray_icon.setIcon(self.tray_layer_icons[layer])
-                self.tray_icon.setToolTip("Layer {}".format(layer))
-            if not self.tray_icon.isVisible():
-                self.tray_icon.show()
-
     def closeEvent(self, e):
         # Check for unsaved changes before closing
         cm = ChangeManager.instance()
@@ -818,10 +680,6 @@ class MainWindow(QMainWindow):
             if ret != QMessageBox.Yes:
                 e.ignore()
                 return
-
-        # Hide tray icon on close
-        if self.tray_icon is not None:
-            self.tray_icon.hide()
 
         self.settings.setValue("size", self.size())
         self.settings.setValue("pos", self.pos())
