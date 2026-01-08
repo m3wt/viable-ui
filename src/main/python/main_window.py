@@ -174,7 +174,19 @@ class MainWindow(QMainWindow):
         if sys.platform == "emscripten":
             import vialglue
             QTimer.singleShot(100, vialglue.notify_ready)
-            QTimer.singleShot(200, self.on_click_refresh)
+            QTimer.singleShot(200, self._web_poll_for_device)
+
+    def _web_poll_for_device(self):
+        """Poll for device on web platform. Other raw-hid users may cause delays."""
+        POLL_INTERVAL_MS = 300
+
+        self.on_click_refresh()
+
+        # Stop polling once we find a device
+        if self.autorefresh.current_device is not None:
+            return
+
+        QTimer.singleShot(POLL_INTERVAL_MS, self._web_poll_for_device)
 
     def init_menu(self):
         layout_load_act = QAction(tr("MenuFile", "Load saved layout..."), self)

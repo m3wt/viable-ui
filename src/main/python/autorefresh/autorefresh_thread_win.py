@@ -38,6 +38,9 @@ class AutorefreshThreadWin(AutorefreshThread):
             win32con.DEVICE_NOTIFY_WINDOW_HANDLE | DEVICE_NOTIFY_ALL_INTERFACE_CLASSES
         )
 
+        # Perform initial device scan on startup (like the base class does)
+        self.update()
+
         while True:
             for x in range(100):
                 win32gui.PumpWaitingMessages()
