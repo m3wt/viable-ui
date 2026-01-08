@@ -266,14 +266,11 @@ class ModsBar(QWidget):
     def _toggle_mod(self, mod, checked):
         self.mods[mod] = checked
         # Emit whenever modifier state changes (affects which keycodes are valid)
-        if mod in ('shift', 'ctrl', 'gui', 'alt'):
+        if mod in ('shift', 'ctrl', 'gui', 'alt', 'mod_tap'):
             self.mods_changed.emit(self.has_active_mods())
 
     def wrap_keycode(self, keycode):
-        """Wrap a keycode with active modifiers or mod-tap"""
-        if not Keycode.is_basic(keycode):
-            return keycode
-
+        """Wrap a keycode with active modifiers, mod-tap, or LM"""
         s = self.mods['shift']
         c = self.mods['ctrl']
         a = self.mods['alt']
@@ -282,6 +279,15 @@ class ModsBar(QWidget):
         mod_tap = self.mods['mod_tap']
 
         if not any([s, c, a, g]):
+            return keycode
+
+        # Handle MO(layer) -> LM(layer, mod) conversion
+        if keycode.startswith("MO(") and keycode.endswith(")") and not mod_tap:
+            layer = keycode[3:-1]  # Extract layer number
+            mod_str = self._get_mod_string(s, c, a, g, right)
+            return f"LM({layer}, {mod_str})"
+
+        if not Keycode.is_basic(keycode):
             return keycode
 
         if mod_tap:
@@ -302,6 +308,20 @@ class ModsBar(QWidget):
                 result = f"{prefix}GUI({result})"
 
             return result
+
+    def _get_mod_string(self, s, c, a, g, right):
+        """Build MOD_xxx string from active modifiers"""
+        prefix = "MOD_R" if right else "MOD_L"
+        mods = []
+        if c:
+            mods.append(f"{prefix}CTL")
+        if s:
+            mods.append(f"{prefix}SFT")
+        if a:
+            mods.append(f"{prefix}ALT")
+        if g:
+            mods.append(f"{prefix}GUI")
+        return "|".join(mods)
 
     def _get_mod_tap_keycode(self, s, c, a, g, right, keycode):
         """Get the appropriate mod-tap keycode for the active modifiers"""
@@ -430,14 +450,22 @@ class AlternativeDisplay(QWidget):
     def has_buttons(self):
         return len(self.buttons) > 0
 
-    def update_mod_tap_state(self, is_active):
+    def update_mod_tap_state(self, mod_tap_active, has_mods=False):
         """Enable/disable buttons based on mod-tap compatibility"""
         for btn in self.buttons:
             if btn.keycode:
                 is_basic = Keycode.is_basic(btn.keycode.qmk_id)
-                btn.setEnabled(not is_active or is_basic)
+                is_mo = btn.keycode.qmk_id.startswith("MO(")
+                # mod_tap: only basic allowed
+                # regular mods: basic + MO allowed (for LM)
+                if mod_tap_active:
+                    btn.setEnabled(is_basic)
+                elif has_mods:
+                    btn.setEnabled(is_basic or is_mo)
+                else:
+                    btn.setEnabled(True)
         if self.kb_display:
-            self.kb_display.update_mod_tap_state(is_active)
+            self.kb_display.update_mod_tap_state(mod_tap_active, has_mods)
 
 
 class Tab(QScrollArea):
@@ -482,10 +510,10 @@ class Tab(QScrollArea):
                 return True
         return False
 
-    def update_mod_tap_state(self, is_active):
+    def update_mod_tap_state(self, mod_tap_active, has_mods=False):
         """Enable/disable buttons based on mod-tap compatibility"""
         for alt in self.alternatives:
-            alt.update_mod_tap_state(is_active)
+            alt.update_mod_tap_state(mod_tap_active, has_mods)
 
     def select_alternative(self):
         # hide everything first
@@ -686,12 +714,13 @@ class StenoTab(QScrollArea):
     def has_buttons(self):
         return len(self.buttons) > 0
 
-    def update_mod_tap_state(self, is_active):
+    def update_mod_tap_state(self, mod_tap_active, has_mods=False):
         """Enable/disable buttons based on mod-tap compatibility"""
         for btn in self.buttons:
             if btn.keycode:
                 is_basic = Keycode.is_basic(btn.keycode.qmk_id)
-                btn.setEnabled(not is_active or is_basic)
+                # Steno keys are not basic and can't be wrapped
+                btn.setEnabled(not mod_tap_active and not has_mods or is_basic)
 
     def required_width(self):
         return 0
@@ -792,12 +821,20 @@ class SectionedTab(QScrollArea):
     def has_buttons(self):
         return len(self.buttons) > 0
 
-    def update_mod_tap_state(self, is_active):
+    def update_mod_tap_state(self, mod_tap_active, has_mods=False):
         """Enable/disable buttons based on mod-tap compatibility"""
         for btn in self.buttons:
             if btn.keycode:
                 is_basic = Keycode.is_basic(btn.keycode.qmk_id)
-                btn.setEnabled(not is_active or is_basic)
+                is_mo = btn.keycode.qmk_id.startswith("MO(")
+                # mod_tap: only basic allowed
+                # regular mods: basic + MO allowed (for LM)
+                if mod_tap_active:
+                    btn.setEnabled(is_basic)
+                elif has_mods:
+                    btn.setEnabled(is_basic or is_mo)
+                else:
+                    btn.setEnabled(True)
 
     def select_alternative(self):
         pass  # No alternatives in sectioned tab
@@ -889,12 +926,18 @@ class HeaderedSectionedTab(QScrollArea):
     def has_buttons(self):
         return len(self.buttons) > 0
 
-    def update_mod_tap_state(self, is_active):
+    def update_mod_tap_state(self, mod_tap_active, has_mods=False):
         """Enable/disable buttons based on mod-tap compatibility"""
         for btn in self.buttons:
             if btn.keycode:
                 is_basic = Keycode.is_basic(btn.keycode.qmk_id)
-                btn.setEnabled(not is_active or is_basic)
+                is_mo = btn.keycode.qmk_id.startswith("MO(")
+                if mod_tap_active:
+                    btn.setEnabled(is_basic)
+                elif has_mods:
+                    btn.setEnabled(is_basic or is_mo)
+                else:
+                    btn.setEnabled(True)
 
     def select_alternative(self):
         pass
@@ -980,8 +1023,13 @@ class FilteredTabbedKeycodes(QWidget):
 
     def _on_mods_changed(self, has_mods):
         """Update all tabs when modifier state changes"""
+        # Disable non-basic keycodes based on modifier state:
+        # - mod_tap active: only basic keycodes allowed
+        # - regular mods active: basic + MO (for LM conversion) allowed
+        # - no mods: everything allowed
+        mod_tap = self.mods_bar.mods['mod_tap']
         for tab in self.tabs:
-            tab.update_mod_tap_state(has_mods)
+            tab.update_mod_tap_state(mod_tap, has_mods)
 
     def recreate_keycode_buttons(self):
         prev_tab = self.tab_widget.tabText(self.tab_widget.currentIndex()) if self.tab_widget.currentIndex() >= 0 else ""

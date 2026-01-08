@@ -33,9 +33,14 @@ def translate_keycode_v5_to_v6(code):
     if 0x6000 <= code <= 0x7FFF:
         return (code - 0x6000) + 0x2000
 
-    # QK_LAYER_MOD: 0x5900-0x59FF -> 0x5000-0x50FF
+    # QK_LAYER_MOD: 0x5900-0x59FF -> 0x5000-0x51FF
+    # v5 format: layer in bits 4-7, mod in bits 0-3 (4-bit mods, LHS only)
+    # v6 format: layer in bits 5-8, mod in bits 0-4 (5-bit mods, LHS+RHS)
     if 0x5900 <= code <= 0x59FF:
-        return (code - 0x5900) + 0x5000
+        v5_offset = code - 0x5900
+        layer = (v5_offset >> 4) & 0xF
+        mod = v5_offset & 0xF
+        return 0x5000 | (layer << 5) | mod
 
     # QK_LAYER_TAP_TOGGLE: 0x5800-0x58FF -> 0x52C0-0x52DF (only 32 entries)
     if 0x5800 <= code <= 0x58FF:
@@ -173,8 +178,65 @@ class Keycode:
     def label(cls, qmk_id):
         keycode = cls.find_outer_keycode(qmk_id)
         if keycode is None:
+            # Handle LM(layer, mod) specially
+            if qmk_id.startswith("LM(") and qmk_id.endswith(")"):
+                return cls._format_lm_label(qmk_id)
             return qmk_id
         return keycode.label
+
+    @classmethod
+    def _format_lm_label(cls, qmk_id):
+        """Format LM(layer, mod) as a nice label like 'LM 1\\nShift'"""
+        try:
+            inner = qmk_id[3:-1]  # Extract "layer, mod"
+            parts = inner.split(",", 1)
+            if len(parts) != 2:
+                return qmk_id
+            layer = parts[0].strip()
+            mod_str = parts[1].strip()
+
+            # Convert mod string to short form
+            mod_short = cls._mod_to_short(mod_str)
+            return f"LM {layer}\n{mod_short}"
+        except Exception:
+            return qmk_id
+
+    @classmethod
+    def _mod_to_short(cls, mod_str):
+        """Convert MOD_LSFT|MOD_LCTL to short form like 'LSft' or 'LCS'"""
+        prefix = "R" if "MOD_R" in mod_str else "L"
+        mods = []
+        if "CTL" in mod_str:
+            mods.append("Ctl")
+        if "SFT" in mod_str:
+            mods.append("Sft")
+        if "ALT" in mod_str:
+            mods.append("Alt")
+        if "GUI" in mod_str:
+            mods.append("Gui")
+        if len(mods) == 1:
+            return prefix + mods[0]
+        elif len(mods) > 1:
+            # Multiple mods: use short form like "LCS"
+            return prefix + "".join(m[0] for m in mods)
+        return mod_str
+
+    @classmethod
+    def _mod_value_to_string(cls, mod):
+        """Convert numeric mod value to MOD_xxx string"""
+        # Mod bits: CTL=0x01, SFT=0x02, ALT=0x04, GUI=0x08, right=0x10
+        parts = []
+        is_right = mod & 0x10
+        prefix = "MOD_R" if is_right else "MOD_L"
+        if mod & 0x01:
+            parts.append(f"{prefix}CTL")
+        if mod & 0x02:
+            parts.append(f"{prefix}SFT")
+        if mod & 0x04:
+            parts.append(f"{prefix}ALT")
+        if mod & 0x08:
+            parts.append(f"{prefix}GUI")
+        return "|".join(parts) if parts else "0"
 
     @classmethod
     def tooltip(cls, qmk_id):
@@ -203,6 +265,14 @@ class Keycode:
             inner = RAWCODES_MAP.get(code & 0x00FF)
             if outer is not None and inner is not None:
                 return outer.qmk_id.replace("kc", inner.qmk_id)
+
+        # Handle LM (Layer Mod) keycodes: 0x5000-0x51FF
+        if 0x5000 <= code <= 0x51FF:
+            layer = (code >> 5) & 0xF
+            mod = code & 0x1F
+            mod_str = cls._mod_value_to_string(mod)
+            return f"LM({layer}, {mod_str})"
+
         return hex(code)
 
     @classmethod

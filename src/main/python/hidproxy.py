@@ -39,10 +39,19 @@ if sys.platform == "emscripten":
         def device():
             return hiddevice()
 
+elif sys.platform == "linux":
+    # On Linux, prefer hidraw for proper usage_page/serial_number support
+    try:
+        import hidraw as hid
+    except ImportError:
+        import hid
 else:
-    # Use hidapi on all non-web platforms (Linux, macOS, Windows)
-    # Note: On Linux, hidraw provides better raw HID access but hidapi works for most cases
+    # Use hidapi on macOS and Windows
     try:
         import hid
     except ImportError:
         import hidraw as hid
+
+# Enable non-exclusive mode on macOS to allow multiple HID clients
+if sys.platform == "darwin" and hasattr(hid, "darwin_set_open_exclusive"):
+    hid.darwin_set_open_exclusive(0)
