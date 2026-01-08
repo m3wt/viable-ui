@@ -1094,29 +1094,34 @@ def recreate_keycodes():
 
 
 def create_user_keycodes():
+    """Create hidden USER keycodes for decoding purposes when no custom keycodes are defined."""
     KEYCODES_USER.clear()
     for x in range(64):
-        KEYCODES_USER.append(
-            Keycode(
-                "USER{:02}".format(x),
-                "USER{:02}".format(x),
-                "User keycode {}".format(x)
-            )
+        kc = Keycode(
+            "USER{:02}".format(x),
+            "USER{:02}".format(x),
+            "User keycode {}".format(x)
         )
+        kc.hidden = True
+        KEYCODES_USER.append(kc)
 
 
 def create_custom_user_keycodes(custom_keycodes):
     KEYCODES_USER.clear()
-    # Create keycodes for custom entries
+    # Create keycodes for custom entries - only show those with actual names
     for x, c_keycode in enumerate(custom_keycodes):
-        KEYCODES_USER.append(
-            Keycode(
-                "USER{:02}".format(x),
-                c_keycode.get("shortName", "USER{:02}".format(x)),
-                c_keycode.get("title", "USER{:02}".format(x)),
-                alias=[c_keycode.get("name", "USER{:02}".format(x))]
-            )
+        default_name = "USER{:02}".format(x)
+        short_name = c_keycode.get("shortName") or default_name
+        kc = Keycode(
+            default_name,
+            short_name,
+            c_keycode.get("title") or default_name,
+            alias=[c_keycode.get("name") or default_name]
         )
+        # Hide keycodes that don't have a meaningful custom name
+        if short_name == default_name:
+            kc.hidden = True
+        KEYCODES_USER.append(kc)
     # Create hidden keycodes for remaining slots (for decoding, not shown in UI)
     for x in range(len(custom_keycodes), 64):
         kc = Keycode(
@@ -1225,8 +1230,10 @@ def recreate_keyboard_keycodes(keyboard):
     recreate_keycodes()
 
     # Hide keycodes where .requires_feature isn't supported by the keyboard.
+    # Preserve keycodes that were already marked hidden (e.g., unused USER slots).
     for kc in KEYCODES:
-        kc.hidden = not kc.is_supported_by(keyboard)
+        if not kc.is_supported_by(keyboard):
+            kc.hidden = True
 
 
 # Initialize USER and MACRO keycodes at module load for .vil loading compatibility
