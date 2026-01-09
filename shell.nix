@@ -7,6 +7,7 @@ pkgs.mkShell {
       pyside6
       pytest
       pytest-qt
+      pytest-cov
       hidapi
       keyboard
       simpleeval

@@ -1044,6 +1044,9 @@ class FilteredTabbedKeycodes(QWidget):
                     self.tab_widget.setCurrentIndex(self.tab_widget.count() - 1)
 
     def on_keymap_override(self):
+        self.relabel_buttons()
+
+    def relabel_buttons(self):
         for tab in self.tabs:
             tab.relabel_buttons()
 
@@ -1119,6 +1122,10 @@ class TabbedKeycodes(QWidget):
     def recreate_keycode_buttons(self):
         for opt in [self.all_keycodes, self.basic_keycodes]:
             opt.recreate_keycode_buttons()
+
+    def relabel_buttons(self):
+        for opt in [self.all_keycodes, self.basic_keycodes]:
+            opt.relabel_buttons()
 
     def set_keycode_filter(self, keycode_filter):
         if keycode_filter == keycode_filter_masked:

@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import Tuple, Any
 
+from keycodes.keycodes import refresh_macro_labels
+
 
 class Change(ABC):
     """Base class for all change types."""
@@ -276,6 +278,7 @@ class MacroChange(Change):
             macros.append(b'')
         macros[self.index] = value
         keyboard.macro = b'\x00'.join(macros[:keyboard.macro_count]) + b'\x00'
+        refresh_macro_labels(keyboard)
 
     def __repr__(self):
         return f"MacroChange(index={self.index}, {len(self.old_value)}->{len(self.new_value)} bytes)"

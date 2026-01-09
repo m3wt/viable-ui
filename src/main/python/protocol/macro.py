@@ -1,6 +1,6 @@
 import struct
 
-from keycodes.keycodes import Keycode
+from keycodes.keycodes import Keycode, refresh_macro_labels
 from macro.macro_action import SS_TAP_CODE, SS_DOWN_CODE, SS_UP_CODE, ActionText, ActionTap, ActionDown, ActionUp, \
     SS_QMK_PREFIX, SS_DELAY_CODE, ActionDelay, VIAL_MACRO_EXT_TAP, VIAL_MACRO_EXT_DOWN, VIAL_MACRO_EXT_UP
 from macro.macro_action_ui import tag_to_action
@@ -185,6 +185,7 @@ class ProtocolMacro(BaseProtocol):
                 self.via_send(struct.pack(">BHB", CMD_VIA_MACRO_SET_BUFFER, off, len(chunk)) + chunk,
                               retries=20)
         self.macro = data
+        refresh_macro_labels(self)
 
     def _commit_macro(self, data):
         """Send macro data to the device (used by ChangeManager).
@@ -210,6 +211,7 @@ class ProtocolMacro(BaseProtocol):
                               retries=20)
         self.macro = data
         self._committed_macro = data  # Update committed state after successful push
+        refresh_macro_labels(self)
         return True
 
     def save_macro(self):

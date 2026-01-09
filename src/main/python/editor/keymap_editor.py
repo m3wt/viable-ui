@@ -273,6 +273,10 @@ class KeymapEditor(BasicEditor):
     def save_layout(self):
         return self.keyboard.save_layout()
 
+    def save_layout_as_vil(self):
+        """Save layout in vial-gui compatible .vil format."""
+        return self.keyboard.save_layout_as_vil()
+
     def restore_layout(self, data, filename=None):
         if json.loads(data.decode("utf-8")).get("uid") != self.keyboard.keyboard_id:
             ret = QMessageBox.question(self.widget(), "",
@@ -427,6 +431,9 @@ class KeymapEditor(BasicEditor):
     def on_change_manager_changed(self):
         """Called when ChangeManager state changes (undo/redo)."""
         self.refresh_layer_display()
+        # Also refresh keycode picker buttons (e.g., macro previews)
+        self.tabbed_keycodes.relabel_buttons()
+        TabbedKeycodes.tray.relabel_buttons()
 
     def _on_values_restored(self, affected_keys):
         """Refresh keyboard widget when keymap/encoder values are restored by undo/redo."""

@@ -1306,6 +1306,23 @@ def recreate_keyboard_keycodes(keyboard):
             kc.hidden = True
 
 
+def refresh_macro_labels(keyboard):
+    """Update macro keycode labels after macro content changes.
+
+    This is a lightweight alternative to recreate_keyboard_keycodes() that only
+    updates the label property of existing macro keycodes. Call this after
+    keyboard.macro is updated to ensure key displays show current macro previews.
+    """
+    if not hasattr(keyboard, 'macro_count') or not hasattr(keyboard, 'get_macro_preview'):
+        return
+
+    for x in range(keyboard.macro_count):
+        qmk_id = "M{}".format(x)
+        kc = Keycode.find_by_qmk_id(qmk_id)
+        if kc is not None:
+            kc.label = keyboard.get_macro_preview(x)
+
+
 # Initialize USER and MACRO keycodes at module load for .vil loading compatibility
 create_user_keycodes()
 create_macro_keycodes()
