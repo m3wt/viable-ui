@@ -394,17 +394,26 @@ all_mw = []
 
 @pytest.fixture(autouse=True)
 def cleanup_threads():
-    """Stop all autorefresh threads after each test."""
+    """Stop all autorefresh threads and close windows after each test."""
     yield
-    # Stop and remove all MainWindow threads created during this test
+    # Stop threads and close windows created during this test
     while all_mw:
         mw = all_mw.pop()
         if hasattr(mw, 'autorefresh') and hasattr(mw.autorefresh, 'thread'):
             mw.autorefresh.thread.stop()
+        # Force Qt to process events and clean up properly
+        mw.hide()
+        mw.close()
+        mw.deleteLater()
+    # Process deferred deletions
+    from PySide6.QtWidgets import QApplication
+    QApplication.processEvents()
 
 
 def prepare(qtbot, keyboard_json, combos=None, tap_dance=None):
     import hid
+    from tabbed_keycodes import TabbedKeycodes
+    from util import KeycodeDisplay
 
     vk = VirtualKeyboard(keyboard_json, combos=combos, tap_dance=tap_dance)
     MockDevice.vk = vk
@@ -412,8 +421,10 @@ def prepare(qtbot, keyboard_json, combos=None, tap_dance=None):
     hid.enumerate = mock_enumerate
     hid.device = MockDevice
 
-    # Reset ChangeManager state before creating window
-    ChangeManager.reset()
+    # Fully reset singleton/class-level state to isolate tests
+    ChangeManager._instance = None
+    TabbedKeycodes.tray = None
+    KeycodeDisplay.clients = []
 
     mw = MainWindow(FakeAppctx())
 
@@ -433,12 +444,19 @@ def prepare(qtbot, keyboard_json, combos=None, tap_dance=None):
 
     qtbot.addWidget(mw)
     mw.show()
+    qtbot.waitExposed(mw)  # Wait for window to be properly shown
+
+    # Process any pending events to ensure window is fully initialized
+    from PySide6.QtWidgets import QApplication
+    QApplication.processEvents()
+
     # keep reference to MainWindow for the duration of tests
     # when MainWindow goes out of scope some KeyWidgets are still registered within KeycodeDisplay which causes UaF
     all_mw.append(mw)
 
     # Trigger device discovery (autorefresh thread may not have run yet)
     mw.on_click_refresh()
+    QApplication.processEvents()  # Process device discovery events
 
     # Enable auto_commit AFTER device is discovered (auto_commit is per-keyboard)
     ChangeManager.instance().auto_commit = True

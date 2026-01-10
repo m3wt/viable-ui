@@ -236,7 +236,10 @@ class Keycode:
             parts.append(f"{prefix}ALT")
         if mod & 0x08:
             parts.append(f"{prefix}GUI")
-        return "|".join(parts) if parts else "0"
+        if parts:
+            return "|".join(parts)
+        # No modifier bits set - return "0" or hex if non-zero (preserves invalid values)
+        return "0" if mod == 0 else hex(mod)
 
     @classmethod
     def tooltip(cls, qmk_id):

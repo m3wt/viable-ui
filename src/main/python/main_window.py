@@ -197,6 +197,9 @@ class MainWindow(QMainWindow):
         layout_save_act.setShortcut("Ctrl+Alt+S")
         layout_save_act.triggered.connect(self.on_layout_save)
 
+        layout_save_vil_act = QAction(tr("MenuFile", "Save as .vil (vial-gui format)..."), self)
+        layout_save_vil_act.triggered.connect(self.on_layout_save_as_vil)
+
         sideload_json_act = QAction(tr("MenuFile", "Sideload VIA JSON..."), self)
         sideload_json_act.triggered.connect(self.on_sideload_json)
 
@@ -213,6 +216,7 @@ class MainWindow(QMainWindow):
         file_menu = self.menuBar().addMenu(tr("Menu", "File"))
         file_menu.addAction(layout_load_act)
         file_menu.addAction(layout_save_act)
+        file_menu.addAction(layout_save_vil_act)
 
         if sys.platform != "emscripten":
             file_menu.addSeparator()
@@ -332,6 +336,35 @@ class MainWindow(QMainWindow):
             if dialog.exec() == QDialog.Accepted:
                 with open(dialog.selectedFiles()[0], "wb") as outf:
                     outf.write(self.keymap_editor.save_layout())
+
+    def on_layout_save_as_vil(self):
+        """Save layout in vial-gui compatible .vil format."""
+        if sys.platform == "emscripten":
+            # Web version: use JS bridge
+            import vialglue
+            layout, warnings = self.keymap_editor.save_layout_as_vil()
+            if warnings:
+                QMessageBox.warning(
+                    self,
+                    tr("MainWindow", "Export Warning"),
+                    "\n".join(warnings)
+                )
+            vialglue.save_layout(layout)
+        else:
+            dialog = QFileDialog()
+            dialog.setDefaultSuffix("vil")
+            dialog.setAcceptMode(QFileDialog.AcceptSave)
+            dialog.setNameFilters(["Vial layout (*.vil)"])
+            if dialog.exec() == QDialog.Accepted:
+                layout, warnings = self.keymap_editor.save_layout_as_vil()
+                if warnings:
+                    QMessageBox.warning(
+                        self,
+                        tr("MainWindow", "Export Warning"),
+                        "\n".join(warnings)
+                    )
+                with open(dialog.selectedFiles()[0], "wb") as outf:
+                    outf.write(layout)
 
     def on_click_refresh(self):
         self.autorefresh.update(quiet=False, hard=True)

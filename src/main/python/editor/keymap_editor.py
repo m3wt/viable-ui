@@ -433,7 +433,8 @@ class KeymapEditor(BasicEditor):
         self.refresh_layer_display()
         # Also refresh keycode picker buttons (e.g., macro previews)
         self.tabbed_keycodes.relabel_buttons()
-        TabbedKeycodes.tray.relabel_buttons()
+        if TabbedKeycodes.tray is not None:
+            TabbedKeycodes.tray.relabel_buttons()
 
     def _on_values_restored(self, affected_keys):
         """Refresh keyboard widget when keymap/encoder values are restored by undo/redo."""

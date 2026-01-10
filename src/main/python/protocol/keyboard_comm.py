@@ -492,6 +492,110 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
         return json.dumps(data).encode("utf-8")
 
+    def save_layout_as_vil(self):
+        """
+        Serializes current layout to vial-gui compatible .vil format.
+
+        The .vil format stores keycodes as strings (e.g., "KC_A", "MO(1)").
+        This function ensures the JSON structure matches vial-gui's expectations.
+
+        Returns:
+            tuple: (bytes, list of warnings) - The serialized data and any conversion warnings
+        """
+        from keycodes.vil_compat import (
+            VIAL_PROTOCOL_MAX,
+            convert_tap_dance_to_vil, convert_combo_to_vil,
+            convert_key_override_to_vil, convert_alt_repeat_key_to_vil,
+            translate_layout_keycodes_to_vil, translate_encoder_keycodes_to_vil
+        )
+
+        data = {"version": 1, "uid": self.keyboard_id}
+        warnings = []
+        dropped_keycodes = set()
+
+        # Build layout from internal storage
+        layout = []
+        for l in range(self.layers):
+            layer = []
+            layout.append(layer)
+            for r in range(self.rows):
+                row = []
+                layer.append(row)
+                for c in range(self.cols):
+                    val = self.layout.get((l, r, c), -1)
+                    row.append(val)
+
+        # Translate keycodes - convert GUI-only keycodes to KC_NO
+        layout, dropped = translate_layout_keycodes_to_vil(layout)
+        dropped_keycodes.update(dropped)
+
+        # Build encoder layout
+        encoder_layout = []
+        for l in range(self.layers):
+            layer = []
+            for e in range(self.encoder_count):
+                cw = (l, e, 0)
+                ccw = (l, e, 1)
+                layer.append([self.encoder_layout.get(cw, -1),
+                              self.encoder_layout.get(ccw, -1)])
+            encoder_layout.append(layer)
+
+        # Translate encoder keycodes
+        encoder_layout, dropped = translate_encoder_keycodes_to_vil(encoder_layout)
+        dropped_keycodes.update(dropped)
+
+        data["layout"] = layout
+        data["encoder_layout"] = encoder_layout
+        data["layout_options"] = self.layout_options
+        data["macro"] = self.save_macro()
+
+        # Use vial_protocol (not viable_protocol) for vial-gui compatibility
+        # Cap at VIAL_PROTOCOL_MAX (6) which is what vial-gui supports
+        data["vial_protocol"] = min(self.viable_protocol, VIAL_PROTOCOL_MAX) if self.viable_protocol else VIAL_PROTOCOL_MAX
+        data["via_protocol"] = self.via_protocol
+
+        # Convert tap_dance from dict format to tuple format for vial-gui
+        tap_dance_data, dropped = convert_tap_dance_to_vil(self.save_tap_dance())
+        data["tap_dance"] = tap_dance_data
+        dropped_keycodes.update(dropped)
+
+        # Convert combo from dict format to tuple format (combo_term is lost!)
+        combo_data, has_combo_terms, dropped = convert_combo_to_vil(self.save_combo())
+        data["combo"] = combo_data
+        dropped_keycodes.update(dropped)
+        if has_combo_terms:
+            warnings.append("Custom combo terms are not supported in vial-gui and were dropped")
+
+        # Convert key_override and alt_repeat_key formats:
+        # GUI stores "on" separately and options without enable bit
+        # vial-gui stores enable bit inside options and has no "on" field
+        key_override_data, dropped = convert_key_override_to_vil(self.save_key_override())
+        data["key_override"] = key_override_data
+        dropped_keycodes.update(dropped)
+
+        alt_repeat_key_data, dropped = convert_alt_repeat_key_to_vil(self.save_alt_repeat_key())
+        data["alt_repeat_key"] = alt_repeat_key_data
+        dropped_keycodes.update(dropped)
+
+        # Settings are passed through - vial-gui will filter unsupported ones on load
+        data["settings"] = self.settings
+
+        # Add warnings for features not included in .vil
+        # Only warn if there are actually configured (enabled) leader entries
+        leader_data = self.save_leader()
+        has_configured_leaders = any(entry.get("on", False) for entry in leader_data)
+        if has_configured_leaders:
+            warnings.append("Leader key sequences are not supported in vial-gui and were not exported")
+
+        # Note: leader, oneshot, custom_values, and name are NOT included
+        # as vial-gui doesn't support them
+
+        # Add warning for any dropped keycodes (must be after all conversions)
+        if dropped_keycodes:
+            warnings.insert(0, f"Unsupported keycodes converted to KC_NO: {', '.join(sorted(dropped_keycodes))}")
+
+        return json.dumps(data).encode("utf-8"), warnings
+
     def restore_layout(self, data, filename=None):
         """ Restores saved layout """
 
@@ -508,9 +612,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         saved_via_protocol = data.get("via_protocol")
         needs_translation = (saved_via_protocol is None or saved_via_protocol < 12) and self.via_protocol >= 12
 
-        # Check if we need to fix USER keycodes saved at wrong location
-        # Older .vil files had USER at 0x7E00-0x7E3F, should be 0x7E40-0x7E7F
-        needs_user_fix = data.get("vil_version", 0) < 2
+        # Check if we need to translate keycodes from vial-gui format
+        # This handles USER keycodes (0x7E00->0x7E40) and STN_FN (0x74EA->0x74C0)
+        needs_vil_translation = is_vil or data.get("vial_protocol") is not None
 
         def translate_code(code):
             """Translate keycode if needed, handling both int and string formats."""
@@ -522,9 +626,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 code = Keycode.deserialize(code)
             if needs_translation and not was_string:
                 code = translate_keycode_v5_to_v6(code)
-            # Fix USER keycodes that were incorrectly saved at QK_KB range
-            if needs_user_fix and 0x7E00 <= code <= 0x7E3F:
-                code = code + 0x40
+            # Translate keycodes from vial-gui format (USER, STN_FN)
+            if needs_vil_translation and not was_string:
+                from keycodes.vil_compat import translate_keycode_from_vil
+                code = translate_keycode_from_vil(code)
             return Keycode.serialize(code)
 
         # restore keymap
