@@ -108,31 +108,26 @@ class ClientWrapper:
                 # Use low-level write/read for bootstrap
                 written = self.dev.write(b"\x00" + msg)
                 if written != self.msg_len + 1:
-                    logging.debug("bootstrap: write returned %d, expected %d", written, self.msg_len + 1)
                     time.sleep(0.1)
                     continue
 
                 response = bytes(self.dev.read(self.msg_len, timeout_ms=500))
                 if not response:
-                    logging.debug("bootstrap: no response")
                     time.sleep(0.1)
                     continue
 
                 # Verify response format: [0xDD] [0x00000000] [nonce:20] [client_id:4] [ttl:2]
                 if response[0] != WRAPPER_PREFIX:
-                    logging.debug("bootstrap: unexpected prefix 0x%02X", response[0])
                     continue
 
                 resp_id = struct.unpack("<I", response[1:5])[0]
                 if resp_id != CLIENT_ID_BOOTSTRAP:
                     # Not our response - might be another client's response
-                    logging.debug("bootstrap: response for different client 0x%08X", resp_id)
                     continue
 
                 # Verify nonce echo
                 resp_nonce = response[5:5 + NONCE_SIZE]
                 if resp_nonce != nonce:
-                    logging.debug("bootstrap: nonce mismatch")
                     continue
 
                 # Extract client ID
@@ -147,11 +142,9 @@ class ClientWrapper:
                 self.client_id = new_id
                 self.ttl_seconds = ttl
                 self.last_bootstrap = time.time()
-                logging.debug("bootstrap: got client ID 0x%08X, TTL %d seconds", new_id, ttl)
                 return True
 
-            except OSError as e:
-                logging.debug("bootstrap attempt %d failed: %s", attempt + 1, e)
+            except OSError:
                 time.sleep(0.1)
 
         raise ClientWrapperError("Bootstrap failed after all retries")

@@ -22,6 +22,7 @@ from protocol.constants import CMD_VIA_GET_PROTOCOL_VERSION, CMD_VIA_GET_LAYER_C
     VIABLE_ONESHOT_GET, VIABLE_ONESHOT_SET, \
     VIABLE_DEFINITION_SIZE, VIABLE_DEFINITION_CHUNK, VIABLE_DEFINITION_CHUNK_SIZE, \
     VIABLE_QMK_SETTINGS_QUERY, \
+    VIABLE_FRAGMENT_GET_HARDWARE, VIABLE_FRAGMENT_GET_SELECTIONS, VIABLE_FRAGMENT_SET_SELECTIONS, \
     CMD_VIA_CUSTOM_SET_VALUE, CMD_VIA_CUSTOM_GET_VALUE, CMD_VIA_CUSTOM_SAVE
 from widgets.square_button import SquareButton
 
@@ -37,16 +38,24 @@ FAKE_KEYBOARD = """
     "key_override": 16,
     "alt_repeat_key": 16
   },
-  "layouts": {
-    "keymap": [
-      [
-        "0,0",
-        "0,1"
-      ],
-      [
-        "1,0",
-        "1,1"
+  "fragment_schema_version": 1,
+  "fragments": {
+    "main_keys": {
+      "id": 1,
+      "kle": [
+        ["0,0", "0,1"],
+        ["1,0", "1,1"]
       ]
+    }
+  },
+  "composition": {
+    "instances": [
+      {
+        "id": "main",
+        "fragment": "main_keys",
+        "placement": {"x": 0, "y": 0},
+        "matrix_map": [[0,0], [0,1], [1,0], [1,1]]
+      }
     ]
   }
 }
@@ -93,16 +102,24 @@ FAKE_KEYBOARD_WITH_MENUS = """
       ]
     }
   ],
-  "layouts": {
-    "keymap": [
-      [
-        "0,0",
-        "0,1"
-      ],
-      [
-        "1,0",
-        "1,1"
+  "fragment_schema_version": 1,
+  "fragments": {
+    "main_keys": {
+      "id": 1,
+      "kle": [
+        ["0,0", "0,1"],
+        ["1,0", "1,1"]
       ]
+    }
+  },
+  "composition": {
+    "instances": [
+      {
+        "id": "main",
+        "fragment": "main_keys",
+        "placement": {"x": 0, "y": 0},
+        "matrix_map": [[0,0], [0,1], [1,0], [1,1]]
+      }
     ]
   }
 }
@@ -159,6 +176,9 @@ class VirtualKeyboard:
 
         # Custom values storage: (channel, value_id) -> bytes
         self.custom_values = {}
+
+        # Fragment selections: instance_idx -> fragment_id
+        self.fragment_selections = [0xFF] * 21  # 21 slots, all unset by default
 
     def get_keymap_buffer(self):
         output = b""
@@ -285,6 +305,25 @@ class VirtualKeyboard:
         elif msg[1] == VIABLE_QMK_SETTINGS_QUERY:
             # Return 0xFFFF to indicate no QMK settings supported
             return struct.pack("<BBH", VIABLE_PREFIX, VIABLE_QMK_SETTINGS_QUERY, 0xFFFF)
+        elif msg[1] == VIABLE_FRAGMENT_GET_HARDWARE:
+            # Response: [0xDF] [0x18] [count] [frag0] ... [frag20] (21-byte buffer)
+            count = 1  # Test keyboard has 1 instance
+            resp = struct.pack("BBB", VIABLE_PREFIX, VIABLE_FRAGMENT_GET_HARDWARE, count)
+            resp += bytes(self.fragment_selections)
+            return resp
+        elif msg[1] == VIABLE_FRAGMENT_GET_SELECTIONS:
+            # Response: [0xDF] [0x19] [count] [frag0] ... [frag20] (21-byte buffer)
+            count = 1  # Test keyboard has 1 instance
+            resp = struct.pack("BBB", VIABLE_PREFIX, VIABLE_FRAGMENT_GET_SELECTIONS, count)
+            resp += bytes(self.fragment_selections)
+            return resp
+        elif msg[1] == VIABLE_FRAGMENT_SET_SELECTIONS:
+            # Request: [0xDF] [0x1A] [count] [frag0] ... [frag20]
+            count = msg[2]
+            for i in range(count):
+                self.fragment_selections[i] = msg[3 + i]
+            # Response: [0xDF] [0x1A] [status=0 success]
+            return struct.pack("BBB", VIABLE_PREFIX, VIABLE_FRAGMENT_SET_SELECTIONS, 0)
         raise RuntimeError("unsupported viable submsg 0x{:02X}".format(msg[1]))
 
     def process(self, msg):

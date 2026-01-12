@@ -26,6 +26,8 @@ from protocol.macro import ProtocolMacro
 from protocol.tap_dance import ProtocolTapDance
 from protocol.viable import ProtocolViable
 from protocol.client_wrapper import ClientWrapper
+from protocol.fragments import ProtocolFragments
+from fragments.composer import FragmentComposer
 from unlocker import Unlocker
 from util import MSG_LEN, hid_send
 
@@ -37,7 +39,7 @@ class ProtocolError(Exception):
     pass
 
 
-class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride, ProtocolAltRepeatKey, ProtocolLeader, ProtocolViable):
+class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, ProtocolKeyOverride, ProtocolAltRepeatKey, ProtocolLeader, ProtocolViable, ProtocolFragments):
     """ Low-level communication with a vial-enabled keyboard """
 
     def __init__(self, dev, usb_send=hid_send):
@@ -76,6 +78,13 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.via_protocol = self.keyboard_id = -1
         self.viable_protocol = None  # Viable 0xDF protocol version, or None if not supported
 
+        # Fragment composition
+        self.fragment_composer = None
+        self.fragment_selections = {}  # String ID -> fragment name (from keymap file)
+        self.fragment_hw_detection = {}  # Instance idx -> fragment ID (from hardware)
+        self.fragment_eeprom_selections = {}  # Instance idx -> fragment ID (from EEPROM)
+        self._keymap_buffer = None  # Cached keymap for recompose_fragments
+
     def via_send(self, msg, retries=20):
         """Send a VIA command through the wrapper for client ID isolation."""
         return self.wrapper.send_via(msg, retries=retries)
@@ -100,6 +109,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         # Load QMK settings after reload_dynamic so viable_protocol is set
         self.reload_settings()
 
+        # Load fragment data for fragment-based keyboards
+        self.reload_fragment_data()
+
         # Load macro data early so preview text is available for keycode labels
         self.reload_macros_late()
 
@@ -120,11 +132,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         self.layers = self.via_send(struct.pack("B", CMD_VIA_GET_LAYER_COUNT), retries=20)[1]
 
     def reload_via_protocol(self):
-        logging.debug(" Sending CMD_VIA_GET_PROTOCOL_VERSION (0x%02X)", CMD_VIA_GET_PROTOCOL_VERSION)
         data = self.via_send(struct.pack("B", CMD_VIA_GET_PROTOCOL_VERSION), retries=20)
-        logging.debug(" Received: %s", data.hex())
         self.via_protocol = struct.unpack(">H", data[1:3])[0]
-        logging.debug(" VIA protocol version: %d", self.via_protocol)
 
     def check_protocol_version(self):
         if self.via_protocol not in SUPPORTED_VIA_PROTOCOL:
@@ -135,7 +144,6 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
     def reload_layout(self, sideload_json=None):
         """ Requests layout data from the current device """
 
-        logging.debug(" reload_layout() starting")
         self.reload_via_protocol()
 
         self.sideload = False
@@ -195,12 +203,15 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
 
         self.definition = payload
 
+        # Initialize fragment composer - fragments are required for Viable keyboards
+        if not payload.get('fragments'):
+            raise RuntimeError("Keyboard definition must contain fragments. Non-fragment definitions are not supported.")
+        self.fragment_composer = FragmentComposer(payload)
+
         if "vial" in payload:
             vial = payload["vial"]
             self.vibl = vial.get("vibl", False)
             self.midi = vial.get("midi", None)
-
-        self.layout_labels = payload["layouts"].get("labels")
 
         self.rows = payload["matrix"]["rows"]
         self.cols = payload["matrix"]["cols"]
@@ -211,11 +222,92 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         viable_config = payload.get("viable", {})
         self.reload_viable_config(viable_config)
 
-        serial = KleSerial()
-        kb = serial.deserialize(payload["layouts"]["keymap"])
-
         self.keys = []
         self.encoders = []
+
+        # Fragment-based definitions use composition instead of layouts
+        if self.fragment_composer.has_fragments():
+            self.layout_labels = None  # Fragment layouts don't have traditional labels
+            self._parse_fragment_keys()
+        else:
+            # Traditional KLE-based layout
+            self.layout_labels = payload["layouts"].get("labels")
+            self._parse_traditional_keys(payload)
+
+    def _parse_fragment_keys(self):
+        """Parse keys from fragment-based composition."""
+        # Use fragment composer to expand fragments to keys
+        # First reload fragment data from hardware/EEPROM
+        self.reload_fragment_data()
+
+        # Expand fragments to get keys and encoders
+        self.keys, self.encoders = self.fragment_composer.expand_to_keys(
+            hw_detection=self.fragment_hw_detection,
+            eeprom_selections=self.fragment_eeprom_selections,
+            keymap_selections=self.fragment_selections
+        )
+
+        # Build rowcol and encoderpos maps
+        for key in self.keys:
+            if key.row is not None and key.col is not None:
+                self.rowcol[(key.row, key.col)] = True
+
+        for encoder in self.encoders:
+            if encoder.encoder_idx is not None:
+                self.encoderpos[encoder.encoder_idx] = True
+                self.encoder_count = max(self.encoder_count, encoder.encoder_idx + 1)
+
+    def recompose_fragments(self):
+        """Re-expand keys after fragment selection changes."""
+        if not self.fragment_composer:
+            return
+
+        # Clear existing keys
+        self.keys = []
+        self.encoders = []
+        self.rowcol = {}
+        self.encoderpos = {}
+        self.encoder_count = 0
+
+        # Re-expand with current selections
+        self.keys, self.encoders = self.fragment_composer.expand_to_keys(
+            hw_detection=self.fragment_hw_detection,
+            eeprom_selections=self.fragment_eeprom_selections,
+            keymap_selections=self.fragment_selections
+        )
+
+        # Rebuild rowcol and encoderpos maps
+        for key in self.keys:
+            if key.row is not None and key.col is not None:
+                self.rowcol[(key.row, key.col)] = True
+
+        for encoder in self.encoders:
+            if encoder.encoder_idx is not None:
+                self.encoderpos[encoder.encoder_idx] = True
+                self.encoder_count = max(self.encoder_count, encoder.encoder_idx + 1)
+
+        # Load keycodes for any new matrix positions not yet in layout
+        if hasattr(self, '_keymap_buffer') and self._keymap_buffer:
+            for layer in range(self.layers):
+                for row, col in self.rowcol.keys():
+                    if (layer, row, col) not in self.layout:
+                        if row < self.rows and col < self.cols:
+                            offset = layer * self.rows * self.cols * 2 + row * self.cols * 2 + col * 2
+                            keycode = Keycode.serialize(struct.unpack(">H", self._keymap_buffer[offset:offset+2])[0])
+                            self.layout[(layer, row, col)] = keycode
+
+            # Load encoder keycodes for any new encoder positions
+            for layer in range(self.layers):
+                for idx in self.encoderpos:
+                    for direction in (0, 1):
+                        if (layer, idx, direction) not in self.encoder_layout:
+                            data = self.via_send(struct.pack("BBBB", CMD_VIA_ENCODER_GET, layer, idx, direction), retries=20)
+                            self.encoder_layout[(layer, idx, direction)] = Keycode.serialize(struct.unpack(">H", data[3:5])[0])
+
+    def _parse_traditional_keys(self, payload):
+        """Parse keys from traditional KLE-based layout."""
+        serial = KleSerial()
+        kb = serial.deserialize(payload["layouts"]["keymap"])
 
         for key in kb.keys:
             key.row = key.col = None
@@ -256,6 +348,9 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             sz = min(size - offset, VIA_BUFFER_CHUNK_SIZE)
             data = self.via_send(struct.pack(">BHB", CMD_VIA_KEYMAP_GET_BUFFER, offset, sz), retries=20)
             keymap += data[4:4+sz]
+
+        # Store keymap buffer for recompose_fragments to use
+        self._keymap_buffer = keymap
 
         for layer in range(self.layers):
             for row, col in self.rowcol.keys():
@@ -489,6 +584,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         data["oneshot"] = self.save_oneshot()
         data["settings"] = self.settings
         data["custom_values"] = self.save_custom_values()
+        data["fragment_selections"] = self.save_fragment_selections()
 
         return json.dumps(data).encode("utf-8")
 
@@ -587,8 +683,8 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
         if has_configured_leaders:
             warnings.append("Leader key sequences are not supported in vial-gui and were not exported")
 
-        # Note: leader, oneshot, custom_values, and name are NOT included
-        # as vial-gui doesn't support them
+        # Note: leader, oneshot, custom_values, fragment_selections, and name
+        # are NOT included as vial-gui doesn't support them
 
         # Add warning for any dropped keycodes (must be after all conversions)
         if dropped_keycodes:
@@ -663,6 +759,7 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 self.qmk_settings_set(qsid, value)
 
         self.restore_custom_values(data.get("custom_values", []))
+        self.restore_fragment_selections(data.get("fragment_selections", {}))
 
     def reset(self):
         self.via_send(struct.pack("B", 0xB))

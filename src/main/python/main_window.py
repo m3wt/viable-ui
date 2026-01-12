@@ -18,6 +18,7 @@ from change_manager import ChangeManager
 from editor.alt_repeat_key import AltRepeatKey
 from editor.combos import Combos
 from editor.leader import Leader
+from editor.fragment_editor import FragmentEditor
 from constants import WINDOW_WIDTH, WINDOW_HEIGHT
 from widgets.editor_container import EditorContainer
 from editor.custom_ui_editor import CustomUIEditor
@@ -101,12 +102,15 @@ class MainWindow(QMainWindow):
         self.qmk_settings = QmkSettings()
         self.matrix_tester = MatrixTest(self.layout_editor)
         self.rgb_configurator = RGBConfigurator()
+        self.fragment_editor = FragmentEditor()
+        self.fragment_editor.changed.connect(self._on_fragment_changed)
 
         self.editors = [(self.keymap_editor, "Keymap"), (self.layout_editor, "Layout"), (self.macro_recorder, "Macros"),
                         (self.rgb_configurator, "Lighting"), (self.tap_dance, "Tap Dance"), (self.combos, "Combos"),
                         (self.leader, "Leader"), (self.key_override, "Key Overrides"), (self.alt_repeat_key, "Alt Repeat Key"),
                         (self.custom_ui_editor, "Keyboard Settings"),
                         (self.qmk_settings, "QMK Settings"),
+                        (self.fragment_editor, "Fragments"),
                         (self.matrix_tester, "Matrix tester"), (self.firmware_flasher, "Firmware updater")]
 
         Unlocker.global_layout_editor = self.layout_editor
@@ -444,7 +448,8 @@ class MainWindow(QMainWindow):
 
         for e in [self.layout_editor, self.keymap_editor, self.firmware_flasher, self.macro_recorder,
                   self.tap_dance, self.combos, self.leader, self.key_override, self.alt_repeat_key,
-                  self.qmk_settings, self.matrix_tester, self.rgb_configurator, self.custom_ui_editor]:
+                  self.qmk_settings, self.matrix_tester, self.rgb_configurator, self.custom_ui_editor,
+                  self.fragment_editor]:
             e.rebuild(self.autorefresh.current_device)
 
     def refresh_tabs(self):
@@ -485,6 +490,7 @@ class MainWindow(QMainWindow):
             'Alt Repeat Key': ('alt_repeat_key',),
             'QMK Settings': ('qmk_setting',),
             'Keyboard Settings': ('custom_value',),
+            'Fragments': ('fragment_selection',),
         }
 
         # Find which editors have changes
@@ -506,6 +512,18 @@ class MainWindow(QMainWindow):
                 self.tabs.tabBar().setTabTextColor(i, link_color)
             else:
                 self.tabs.tabBar().setTabTextColor(i, default_color)
+
+    def _on_fragment_changed(self):
+        """Refresh keymap editor when fragment selection changes."""
+        if hasattr(self, 'keymap_editor') and self.keymap_editor.keyboard:
+            # Update the keymap container with new keys
+            self.keymap_editor.container.set_keys(
+                self.keymap_editor.keyboard.keys,
+                self.keymap_editor.keyboard.encoders
+            )
+            # Resize container to fit new layout (needed for scroll area)
+            self.keymap_editor.container.resize(self.keymap_editor.container.sizeHint())
+            self.keymap_editor.refresh_layer_display()
 
     def load_via_stack_json(self):
         from urllib.request import urlopen
@@ -695,6 +713,7 @@ class MainWindow(QMainWindow):
             'alt_repeat_key': 'Alt Repeat Key',
             'qmk_setting': 'QMK Settings',
             'custom_value': 'Keyboard Settings',
+            'fragment_selection': 'Fragments',
         }
 
         # Find the first affected change type and switch to that tab

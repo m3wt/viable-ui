@@ -46,6 +46,11 @@ From `viable.h`:
 | 0x13 | QMK Settings Reset | — |
 | 0x14 | Leader Get | GET |
 | 0x15 | Leader Set | SET |
+| 0x16 | Layer State Get | GET |
+| 0x17 | Layer State Set | SET |
+| 0x18 | Fragment Get Hardware | GET |
+| 0x19 | Fragment Get Selections | GET |
+| 0x1A | Fragment Set Selections | SET |
 
 ---
 
@@ -286,6 +291,92 @@ struct leader_entry_t {
 
 ---
 
+## 0x16: Layer State Get
+
+Query the current active layer state.
+
+**Request:** `[0xDF] [0x16]`
+
+**Response:** `[0xDF] [0x16] [state0] [state1] [state2] [state3]`
+
+- `state0-3`: uint32_t layer bitmask (little-endian)
+  - Bit 0 = layer 0 active
+  - Bit 1 = layer 1 active
+  - etc.
+
+**Example:** `0x05` (binary `0101`) means layers 0 and 2 are active.
+
+---
+
+## 0x17: Layer State Set
+
+Set the active layer state.
+
+**Request:** `[0xDF] [0x17] [state0] [state1] [state2] [state3]`
+
+- `state0-3`: uint32_t layer bitmask (little-endian)
+
+**Response:** `[0xDF] [0x17]`
+
+**Note:** This directly sets `layer_state`, activating/deactivating layers.
+Use with caution as it bypasses normal layer switching logic.
+
+---
+
+## 0x18: Fragment Get Hardware
+
+Query hardware-detected fragments for each instance position.
+
+**Request:** `[0xDF] [0x18]`
+
+**Response:** `[0xDF] [0x18] [count] [21 bytes data]`
+
+- `count`: Number of selectable instances
+- `data`: Fixed 21-byte array, one byte per instance position
+  - Each byte is a **fragment ID** (from fragment definition's `id` field)
+  - `0xFF` = no hardware detection / unused slot
+
+**Note:** Hardware detection is optional. Keyboards without hardware detection
+return `0xFF` for all positions. The GUI uses this to show "detected: X" labels
+and optionally lock selections when `allow_override: false`.
+
+---
+
+## 0x19: Fragment Get Selections
+
+Query user's saved fragment selections from EEPROM.
+
+**Request:** `[0xDF] [0x19]`
+
+**Response:** `[0xDF] [0x19] [count] [21 bytes data]`
+
+- `count`: Number of selectable instances
+- `data`: Fixed 21-byte array, one byte per instance position
+  - Each byte is an **option index** (0-254) into the instance's `fragment_options` array
+  - `0xFF` = no selection (use default or hardware detection)
+
+**Important:** EEPROM stores option indices, NOT fragment IDs. Option index 0
+means the first option in `fragment_options`, index 1 means the second, etc.
+
+---
+
+## 0x1A: Fragment Set Selections
+
+Save user's fragment selections to EEPROM.
+
+**Request:** `[0xDF] [0x1A] [count] [21 bytes data]`
+
+- `count`: Number of selectable instances
+- `data`: Fixed 21-byte array, one byte per instance position
+  - Each byte is an **option index** (0-254) into the instance's `fragment_options` array
+  - `0xFF` = clear selection (use default or hardware detection)
+
+**Response:** `[0xDF] [0x1A] [status]`
+
+- `status`: `0x00` = success
+
+---
+
 ## Entry Sizes Summary
 
 | Feature | Entry Size | Enabled Flag |
@@ -311,3 +402,81 @@ SAVE: [0x09] [channel]
 Channel 0x00 = keyboard custom settings.
 
 See `keyboards/svalboard/svalboard.c` for reference implementation with value IDs for DPI, scroll, automouse, layer colors, etc.
+
+---
+
+## Fragment Composition (JSON)
+
+Fragments enable modular keyboard layouts where physical components can be swapped.
+The JSON definition includes two sections:
+
+### `fragments` section
+
+Defines available fragment types with their visual layout (KLE) and unique ID:
+
+```json
+{
+  "fragments": {
+    "finger_5": {
+      "id": 0,
+      "description": "5-key finger cluster (no 2S)",
+      "kle": [...]
+    },
+    "thumb_left": {
+      "id": 2,
+      "description": "Left thumb cluster (6 keys)",
+      "kle": [...]
+    }
+  }
+}
+```
+
+- `id`: Numeric fragment ID (0-254) used in hardware detection protocol
+- `description`: Human-readable name shown in GUI
+- `kle`: KLE layout data for visual rendering
+
+### `composition.instances` section
+
+Defines where fragments are placed and what options are available:
+
+```json
+{
+  "composition": {
+    "instances": [
+      {
+        "id": "left_pinky",
+        "fragment_options": [
+          {
+            "fragment": "finger_5",
+            "placement": {"x": 0, "y": 1.5},
+            "matrix_map": [[4,3], [4,4], [4,2], [4,1], [4,0]]
+          },
+          {
+            "fragment": "finger_6",
+            "placement": {"x": 0, "y": 1.5},
+            "matrix_map": [[4,3], [4,4], [4,2], [4,1], [4,0], [4,5]]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+- `id`: String identifier for the instance position (used in keymap files)
+- `fragment_options`: Array of available fragments for this position
+  - **First option is the default** (option index 0)
+  - `fragment`: Reference to fragment name in `fragments` section
+  - `placement`: X/Y offset for visual positioning
+  - `matrix_map`: Array of [row, col] pairs mapping keys to matrix positions
+- `allow_override`: If `false`, hardware detection cannot be overridden by user
+
+### Resolution Priority
+
+When determining which fragment to display:
+
+1. If hardware detected AND `allow_override: false`: hardware wins
+2. Keymap file selection (loaded .vil file)
+3. EEPROM selection (user's saved choice)
+4. Hardware detection (if `allow_override: true`)
+5. Default (first option in `fragment_options`)

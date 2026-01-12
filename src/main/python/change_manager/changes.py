@@ -383,3 +383,63 @@ class CustomValueChange(Change):
 
     def __repr__(self):
         return f"CustomValueChange(ch={self.channel}, id={self.value_id}, {len(self.old_value)}->{len(self.new_value)} bytes)"
+
+
+class FragmentSelectionChange(Change):
+    """Change to a fragment selection for an instance.
+
+    Tracks both string ID (for keymap files) and integer index (for EEPROM storage).
+    """
+
+    def __init__(self, instance_id: str, instance_idx: int,
+                 old_fragment: str, new_fragment: str,
+                 old_fragment_id: int, new_fragment_id: int):
+        self.instance_id = instance_id  # String ID for keymap files
+        self.instance_idx = instance_idx  # Array position for EEPROM
+        self.old_fragment = old_fragment  # Fragment name (string)
+        self.new_fragment = new_fragment
+        self.old_fragment_id = old_fragment_id  # Fragment ID (int 0-254)
+        self.new_fragment_id = new_fragment_id
+
+    @property
+    def old_value(self):
+        """For ChangeManager compatibility."""
+        return (self.old_fragment, self.old_fragment_id)
+
+    @property
+    def new_value(self):
+        """For ChangeManager compatibility."""
+        return (self.new_fragment, self.new_fragment_id)
+
+    @new_value.setter
+    def new_value(self, value):
+        """For ChangeManager merge compatibility."""
+        self.new_fragment, self.new_fragment_id = value
+
+    def key(self) -> Tuple:
+        return ('fragment_selection', self.instance_id)
+
+    def apply(self, keyboard) -> bool:
+        return keyboard.set_fragment_selection(self.instance_idx, self.new_fragment_id)
+
+    def revert(self, keyboard) -> bool:
+        return keyboard.set_fragment_selection(self.instance_idx, self.old_fragment_id)
+
+    def restore_local(self, keyboard, use_old: bool) -> None:
+        fragment = self.old_fragment if use_old else self.new_fragment
+        fragment_id = self.old_fragment_id if use_old else self.new_fragment_id
+        if hasattr(keyboard, 'fragment_selections'):
+            keyboard.fragment_selections[self.instance_id] = fragment
+        if hasattr(keyboard, 'fragment_eeprom_selections'):
+            if fragment_id == 0xFF:
+                keyboard.fragment_eeprom_selections.pop(self.instance_idx, None)
+            else:
+                keyboard.fragment_eeprom_selections[self.instance_idx] = fragment_id
+
+    def merge(self, other: 'FragmentSelectionChange') -> bool:
+        self.new_fragment = other.new_fragment
+        self.new_fragment_id = other.new_fragment_id
+        return True
+
+    def __repr__(self):
+        return f"FragmentSelectionChange(id={self.instance_id}, {self.old_fragment}->{self.new_fragment})"

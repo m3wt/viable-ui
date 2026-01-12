@@ -12,7 +12,7 @@ class AutorefreshLocker:
     def __enter__(self):
         self.autorefresh._lock()
 
-    def __exit__(self):
+    def __exit__(self, *args):
         self.autorefresh._unlock()
 
 
@@ -74,6 +74,8 @@ class Autorefresh(QObject):
             logging.debug(" Selected device: %s", self.current_device.title() if hasattr(self.current_device, 'title') else str(self.current_device))
 
         if self.current_device is not None:
+            # Lock polling during device load to prevent HID access conflicts
+            self._lock()
             try:
                 if self.current_device.sideload:
                     logging.debug(" Opening sideload device...")
@@ -88,6 +90,8 @@ class Autorefresh(QObject):
             except Exception as e:
                 logging.warning(" Failed to open device: %s", e)
                 self.current_device = None
+            finally:
+                self._unlock()
         self.thread.set_device(self.current_device)
         logging.debug(" select_device() complete")
 

@@ -6,7 +6,8 @@ import os
 from keycodes.keycodes import Keycode
 from protocol.keyboard_comm import Keyboard
 from protocol.constants import VIABLE_PREFIX, VIABLE_GET_PROTOCOL_INFO, VIABLE_DEFINITION_SIZE, \
-    VIABLE_DEFINITION_CHUNK, VIABLE_DEFINITION_CHUNK_SIZE
+    VIABLE_DEFINITION_CHUNK, VIABLE_DEFINITION_CHUNK_SIZE, \
+    VIABLE_FRAGMENT_GET_HARDWARE, VIABLE_FRAGMENT_GET_SELECTIONS
 from util import chunks, MSG_LEN
 
 
@@ -18,11 +19,11 @@ class FakeAppContext:
         return os.path.join(base_path, "resources", "base", name)
 
 LAYOUT_2x2 = """
-{"name":"test","vendorId":"0x0000","productId":"0x1111","lighting":"none","matrix":{"rows":2,"cols":2},"layouts":{"keymap":[["0,0","0,1"],["1,0","1,1"]]}}
+{"name":"test","vendorId":"0x0000","productId":"0x1111","lighting":"none","matrix":{"rows":2,"cols":2},"fragment_schema_version":1,"fragments":{"main":{"id":1,"kle":[["0,0","0,1"],["1,0","1,1"]]}},"composition":{"instances":[{"id":"main","fragment":"main","placement":{"x":0,"y":0},"matrix_map":[[0,0],[0,1],[1,0],[1,1]]}]}}
 """
 
 LAYOUT_ENCODER = r"""
-{"name":"test","vendorId":"0x0000","productId":"0x1111","lighting":"none","matrix":{"rows":1,"cols":1},"layouts":{"keymap":[["0,0\n\n\n\n\n\n\n\n\ne","0,1\n\n\n\n\n\n\n\n\ne"],["0,0"]]}}
+{"name":"test","vendorId":"0x0000","productId":"0x1111","lighting":"none","matrix":{"rows":1,"cols":1},"fragment_schema_version":1,"fragments":{"main":{"id":1,"kle":[["0,0\n\n\n\n\n\n\n\n\ne","0,1\n\n\n\n\n\n\n\n\ne"],["0,0"]]}},"composition":{"instances":[{"id":"main","fragment":"main","placement":{"x":0,"y":0},"matrix_map":[[0,0]],"encoder_offset":0}]}}
 """
 
 
@@ -157,6 +158,19 @@ class SimulatedDevice:
             )
             offset += actual_size
 
+    def expect_fragments(self, instance_count=1):
+        """Expect fragment protocol queries (0x18 hardware, 0x19 EEPROM)"""
+        # Response: [0xDF] [cmd] [count] [frag0...frag20] (21 bytes)
+        selections = bytes([0xFF] * 21)  # All unset
+        self.expect(
+            struct.pack("BB", VIABLE_PREFIX, VIABLE_FRAGMENT_GET_HARDWARE),
+            struct.pack("BBB", VIABLE_PREFIX, VIABLE_FRAGMENT_GET_HARDWARE, instance_count) + selections
+        )
+        self.expect(
+            struct.pack("BB", VIABLE_PREFIX, VIABLE_FRAGMENT_GET_SELECTIONS),
+            struct.pack("BBB", VIABLE_PREFIX, VIABLE_FRAGMENT_GET_SELECTIONS, instance_count) + selections
+        )
+
     def expect_layers(self, layers):
         self.expect("11", struct.pack("BB", 0x11, layers))
 
@@ -222,6 +236,7 @@ class TestKeyboard(unittest.TestCase):
         dev.expect_via_protocol(12)
         dev.expect_viable_protocol(1)  # Viable protocol version 1
         dev.expect_layout(layout)
+        dev.expect_fragments(1)  # Fragment-based layouts query hardware/EEPROM
         dev.expect_layers(len(keymap))
 
         # macro count
