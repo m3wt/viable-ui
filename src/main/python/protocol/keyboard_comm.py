@@ -470,9 +470,10 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
             if data[2] == 0:  # status = success
                 self.settings[qsid] = QmkSettings.qsid_deserialize(qsid, data[3:])
 
-    def set_key(self, layer, row, col, code):
+    def set_key(self, layer, row, col, code, force=False):
         key = (layer, row, col)
-        if self.layout[key] != code:
+        # force=True skips existence check (used when restoring layouts with different fragments)
+        if force or self.layout.get(key) != code:
             if code == RESET_KEYCODE:
                 Unlocker.unlock(self)
 
@@ -728,12 +729,12 @@ class Keyboard(ProtocolMacro, ProtocolDynamic, ProtocolTapDance, ProtocolCombo, 
                 code = translate_keycode_from_vil(code)
             return Keycode.serialize(code)
 
-        # restore keymap
+        # restore keymap - load all keys from file regardless of current fragment
+        # visibility, so switching fragments later will show the saved values
         for l, layer in enumerate(data["layout"]):
             for r, row in enumerate(layer):
                 for c, code in enumerate(row):
-                    if (l, r, c) in self.layout:
-                        self.set_key(l, r, c, translate_code(code))
+                    self.set_key(l, r, c, translate_code(code), force=True)
 
         # restore encoders
         for l, layer in enumerate(data["encoder_layout"]):
