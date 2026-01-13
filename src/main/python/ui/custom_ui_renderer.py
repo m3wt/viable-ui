@@ -501,21 +501,21 @@ class CustomUIRenderer(QObject):
 
         update_button_color()
 
+        def on_color_selected(color):
+            if color.isValid():
+                h, s, v, _ = color.getHsv()
+                hs_state[0] = int(h * 255 / 360)
+                hs_state[1] = int(s * 255 / 255)
+                value = hs_state[0] | (hs_state[1] << 8)
+                self._set_value(channel, value_id, value, 2)
+                update_button_color()
+
         def on_click():
             initial = QColor.fromHsv(int(hs_state[0] * 360 / 255), int(hs_state[1] * 255 / 255), 255)
             dlg = QColorDialog()
             dlg.setModal(True)
             dlg.setCurrentColor(initial)
-            def on_finished():
-                color = dlg.selectedColor()
-                if color.isValid():
-                    h, s, v, _ = color.getHsv()
-                    hs_state[0] = int(h * 255 / 360)
-                    hs_state[1] = int(s * 255 / 255)
-                    value = hs_state[0] | (hs_state[1] << 8)
-                    self._set_value(channel, value_id, value, 2)
-                    update_button_color()
-            dlg.finished.connect(on_finished)
+            dlg.colorSelected.connect(on_color_selected)
             # Store reference to prevent garbage collection
             color_button._dlg = dlg
             dlg.show()
@@ -553,7 +553,11 @@ class CustomUIRenderer(QObject):
         value_id = content[2] if len(content) > 2 else 0
 
         # Create compact widget with swatch on top, label below
-        container = QWidget()
+        # Use QFrame for consistent highlighting with other controls
+        container = QFrame()
+        container.setObjectName("custom_ui_frame")
+        # Set initial transparent border to reserve space for highlight border
+        container.setStyleSheet("#custom_ui_frame { border: 2px solid transparent; }")
         layout = QVBoxLayout()
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(2)
@@ -586,21 +590,21 @@ class CustomUIRenderer(QObject):
 
         update_button_color()
 
+        def on_color_selected(color):
+            if color.isValid():
+                h, s, v, _ = color.getHsv()
+                hs_state[0] = int(h * 255 / 360)
+                hs_state[1] = int(s * 255 / 255)
+                value = hs_state[0] | (hs_state[1] << 8)
+                self._set_value(channel, value_id, value, 2)
+                update_button_color()
+
         def on_click():
             initial = QColor.fromHsv(int(hs_state[0] * 360 / 255), int(hs_state[1] * 255 / 255), 255)
             dlg = QColorDialog()
             dlg.setModal(True)
             dlg.setCurrentColor(initial)
-            def on_finished():
-                color = dlg.selectedColor()
-                if color.isValid():
-                    h, s, v, _ = color.getHsv()
-                    hs_state[0] = int(h * 255 / 360)
-                    hs_state[1] = int(s * 255 / 255)
-                    value = hs_state[0] | (hs_state[1] << 8)
-                    self._set_value(channel, value_id, value, 2)
-                    update_button_color()
-            dlg.finished.connect(on_finished)
+            dlg.colorSelected.connect(on_color_selected)
             # Store reference to prevent garbage collection
             color_button._dlg = dlg
             dlg.show()
@@ -616,6 +620,7 @@ class CustomUIRenderer(QObject):
         if value_key:
             self.widget_updaters[value_key] = update_color
             self.widgets[value_key] = container
+            self.widget_frames[value_key] = container
 
         layout.addWidget(color_button, alignment=Qt.AlignCenter)
         layout.addWidget(lbl)
