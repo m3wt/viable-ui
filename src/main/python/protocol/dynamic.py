@@ -57,6 +57,11 @@ class ProtocolDynamic(BaseProtocol):
         # Entry counts are set by reload_viable_config() during JSON parsing
         # which happens before reload_dynamic() is called. Don't reset them here.
 
+        # Re-add repeat_key feature if alt_repeat_key_count was set by reload_viable_config
+        # (we reset supported_features above, so need to restore this)
+        if getattr(self, 'alt_repeat_key_count', 0) > 0:
+            self.supported_features.add("repeat_key")
+
     def reload_viable_config(self, viable_config):
         """Load entry counts from viable.json config parsed from keyboard definition."""
         self.tap_dance_count = viable_config.get("tap_dance", 0)

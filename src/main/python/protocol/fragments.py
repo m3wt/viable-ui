@@ -161,3 +161,6 @@ class ProtocolFragments:
     def restore_fragment_selections(self, data):
         """Restore fragment selections from keymap file."""
         self.fragment_selections = data if data else {}
+        # Recompose fragments to reflect loaded selections
+        if self.fragment_selections and hasattr(self, 'recompose_fragments'):
+            self.recompose_fragments()
