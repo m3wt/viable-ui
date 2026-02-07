@@ -1,0 +1,10 @@
+# Use viable-kb fork on macOS for non-exclusive HID support (multi-client)
+# Once trezor/cython-hidapi#194 merges, can switch back to hidapi>=0.14
+hidapi @ git+https://github.com/viable-kb/cython-hidapi.git@master ; sys_platform == 'darwin'
+hidapi>=0.14 ; sys_platform != 'darwin'
+keyboard>=0.13.5
+qtpy>=2.4
+PySide6>=6.6
+simpleeval>=0.9
+pywin32>=306; sys_platform == 'win32'
+certifi

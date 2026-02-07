@@ -1,0 +1,11 @@
+venv
+target
+__pycache__
+build-nuitka/output
+*.pyc
+.idea
+CLAUDE.md
+
+# Font source files (keep only the subset)
+web/fonts/*.otf
+web/fonts/*.ttc

@@ -1,0 +1,6 @@
+# Build dependencies for Nuitka
+-r requirements.txt
+nuitka>=2.4
+ordered-set
+zstandard
+imageio  # For macOS icon conversion

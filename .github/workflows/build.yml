@@ -1,0 +1,318 @@
+name: Build
+
+on:
+  push:
+    branches: [viable]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  QT_API: pyside6
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libusb-1.0-0-dev libudev-dev \
+          libxcb-cursor0 libxcb-icccm4 libxcb-util1 libxcb-image0 \
+          libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-render0 \
+          libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
+          libxcb1 libxcb-glx0 libxkbcommon0 libxkbcommon-x11-0 \
+          libx11-6 libx11-xcb1 libxau6 libxdmcp6 \
+          libglib2.0-0 libegl1 libgl1
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements-test.txt
+
+    - name: Run tests
+      uses: coactions/setup-xvfb@v1
+      with:
+        run: pytest src/main/python/test/ -v
+      env:
+        QT_QPA_PLATFORM: xcb
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements-build.txt
+
+    - name: Show resolved versions
+      run: pip freeze
+
+    - name: Build with Nuitka
+      run: |
+        python -m nuitka `
+          --standalone `
+          --enable-plugin=pyside6 `
+          --include-data-dir=src/main/resources/base=resources/base `
+          --include-data-file=src/build/settings/base.json=build_settings.json `
+          --windows-icon-from-ico=src/main/icons/Icon.ico `
+          --windows-console-mode=disable `
+          --windows-company-name="Viable" `
+          --windows-product-name="Viable" `
+          --windows-file-version=0.7.5.0 `
+          --windows-product-version=0.7.5.0 `
+          --windows-file-description="Viable Keyboard Configurator" `
+          --output-dir=build-nuitka/output `
+          --output-filename=Viable.exe `
+          --assume-yes-for-downloads `
+          --remove-output `
+          src/main/python/main.py
+
+    - name: Create installer
+      run: iscc build-nuitka/installer.iss
+
+    - name: Upload portable artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Viable-Windows-Portable
+        path: build-nuitka/output/main.dist/
+
+    - name: Upload installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: Viable-Windows-Installer
+        path: build-nuitka/output/Viable-*-Setup.exe
+
+  build-macos:
+    runs-on: macos-14  # Apple Silicon
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements-build.txt
+
+    - name: Show resolved versions
+      run: pip freeze
+
+    - name: Build with Nuitka
+      run: |
+        python -m nuitka \
+          --standalone \
+          --enable-plugin=pyside6 \
+          --include-data-dir=src/main/resources/base=resources/base \
+          --include-data-file=src/build/settings/base.json=build_settings.json \
+          --macos-app-icon=src/main/icons/mac/1024.png \
+          --macos-create-app-bundle \
+          --macos-app-name=Viable \
+          --output-dir=build-nuitka/output \
+          --output-filename=Viable \
+          --assume-yes-for-downloads \
+          --remove-output \
+          src/main/python/main.py
+
+    - name: Rename app bundle
+      run: mv build-nuitka/output/main.app build-nuitka/output/Viable.app
+
+    - name: Create DMG
+      run: |
+        # Create a temporary directory for the DMG contents
+        mkdir -p dmg-staging
+        cp -R build-nuitka/output/Viable.app dmg-staging/
+
+        # Create a symbolic link to Applications for easy drag-and-drop install
+        ln -s /Applications dmg-staging/Applications
+
+        # Create the DMG
+        hdiutil create -volname "Viable" -srcfolder dmg-staging -ov -format UDZO Viable-macOS.dmg
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Viable-macOS
+        path: Viable-macOS.dmg
+
+  build-linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libusb-1.0-0-dev libudev-dev patchelf libfuse2
+
+    - name: Install AppImage tools and xcb dependencies
+      run: |
+        sudo apt-get install -y \
+          libxcb-cursor0 libxcb-icccm4 libxcb-util1 libxcb-image0 \
+          libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-render0 \
+          libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-xkb1 \
+          libxcb1 libxcb-glx0 libxkbcommon0 libxkbcommon-x11-0 \
+          libx11-6 libx11-xcb1 libxau6 libxdmcp6 \
+          libglib2.0-0 libegl1 libgl1 zlib1g libbsd0
+        wget -O appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+        chmod +x appimagetool
+        ./appimagetool --appimage-extract
+        sudo mv squashfs-root /opt/appimagetool
+        sudo ln -s /opt/appimagetool/AppRun /usr/local/bin/appimagetool
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements-build.txt
+
+    - name: Show resolved versions
+      run: pip freeze
+
+    - name: Build with Nuitka
+      run: |
+        python -m nuitka \
+          --standalone \
+          --enable-plugin=pyside6 \
+          --include-data-dir=src/main/resources/base=resources/base \
+          --include-data-file=src/build/settings/base.json=build_settings.json \
+          --linux-icon=src/main/icons/linux/256.png \
+          --output-dir=build-nuitka/output \
+          --output-filename=Viable \
+          --assume-yes-for-downloads \
+          --remove-output \
+          src/main/python/main.py
+
+    - name: Create AppImage
+      run: |
+        APPDIR=Viable.AppDir
+        mkdir -p $APPDIR/usr/bin
+        mkdir -p $APPDIR/usr/lib
+        mkdir -p $APPDIR/usr/share/icons/hicolor/256x256/apps
+        mkdir -p $APPDIR/usr/share/applications
+
+        # Copy Nuitka output
+        cp -a build-nuitka/output/main.dist/* $APPDIR/usr/bin/
+
+        # Bundle system libraries for portability
+        copy_lib() {
+          local lib="$1"
+          for path in /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu; do
+            if [ -f "$path/$lib" ]; then
+              cp -L "$path/$lib" "$APPDIR/usr/lib/"
+              return 0
+            fi
+          done
+          return 1
+        }
+
+        # XCB and X11 libraries
+        for lib in libxcb-cursor.so.0 libxcb-icccm.so.4 libxcb-util.so.1 \
+                   libxcb-image.so.0 libxcb-keysyms.so.1 libxcb-randr.so.0 \
+                   libxcb-render-util.so.0 libxcb-render.so.0 libxcb-shape.so.0 \
+                   libxcb-shm.so.0 libxcb-sync.so.1 libxcb-xfixes.so.0 \
+                   libxcb-xkb.so.1 libxcb.so.1 libxcb-glx.so.0 \
+                   libxkbcommon.so.0 libxkbcommon-x11.so.0 \
+                   libX11.so.6 libX11-xcb.so.1 libXau.so.6 libXdmcp.so.6; do
+          copy_lib "$lib"
+        done
+
+        # Additional required libraries
+        for lib in libzstd.so.1 libz.so.1 libbsd.so.0 libmd.so.0; do
+          copy_lib "$lib"
+        done
+
+        cp src/main/icons/linux/256.png $APPDIR/usr/share/icons/hicolor/256x256/apps/viable.png
+        cp src/main/icons/linux/256.png $APPDIR/viable.png
+
+        cat > $APPDIR/viable.desktop << 'EOF'
+        [Desktop Entry]
+        Type=Application
+        Name=Viable
+        Comment=Configure your Viable-enabled keyboard
+        Exec=Viable
+        Icon=viable
+        Categories=Utility;Settings;HardwareSettings;
+        EOF
+        sed -i 's/^        //' $APPDIR/viable.desktop
+        cp $APPDIR/viable.desktop $APPDIR/usr/share/applications/
+
+        cat > $APPDIR/AppRun << 'EOF'
+        #!/bin/sh
+        HERE=$(dirname $(readlink -f "${0}"))
+        export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/bin:${LD_LIBRARY_PATH}"
+        export QT_QPA_PLATFORM=xcb
+        exec "${HERE}/usr/bin/Viable" "$@"
+        EOF
+        sed -i 's/^        //' $APPDIR/AppRun
+        chmod +x $APPDIR/AppRun
+
+        ARCH=x86_64 appimagetool $APPDIR Viable-x86_64.AppImage
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Viable-Linux
+        path: Viable-x86_64.AppImage
+
+  build-web:
+    runs-on: ubuntu-22.04
+
+    container:
+      image: ghcr.io/ilc/vial-gui-build:latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add safe directory
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+    - name: Build
+      run: |
+        cd web
+        ./build.sh
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: vial-web
+        path: web/build
+
+    - uses: actions/upload-pages-artifact@v3
+      with:
+        path: web/build
+
+  deploy-web:
+    if: github.ref == 'refs/heads/viable'
+    needs: build-web
+    runs-on: ubuntu-22.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deploy
+      uses: actions/deploy-pages@v4

@@ -1,0 +1,29 @@
+{ pkgs ? import <nixpkgs> {} }:
+
+pkgs.mkShell {
+  buildInputs = with pkgs; [
+    (python312.withPackages (ps: with ps; [
+      qtpy
+      pyside6
+      pytest
+      pytest-qt
+      pytest-cov
+      hidapi
+      keyboard
+      simpleeval
+      certifi
+      nuitka
+      ordered-set
+    ]))
+
+    # HID access
+    hidapi
+    libusb1
+  ];
+
+  shellHook = ''
+    export PYTHONPATH="src/main/python:$PYTHONPATH"
+    echo "Run: python src/main/python/main.py"
+    echo "Test: pytest src/main/python/test/"
+  '';
+}
